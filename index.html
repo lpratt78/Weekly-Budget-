@@ -242,7 +242,7 @@ function goalCard(m){
   <div class="row" style="padding:2px 0;border:0"><span>${met?'Ahead of goal':'Short of goal'}</span><b style="color:${met?'var(--sav)':'var(--bill)'}">${pts} points${met?'':' · '+fmt(m.gap)+' a week'}</b></div></div>`;
 }
 const PERIODS={week:{n:'Every week',y:52},biweekly:{n:'Every 2 weeks',y:26},semi:{n:'Twice a month',y:24},month:{n:'Once a month',y:12}};
-function stubDefaults(){const t=(id,name,type)=>({id,name,amount:'',type});return{period:'biweekly',gross:'',items:[t('t1','Federal income tax','tax'),t('t2','State income tax','tax'),t('t3','Social Security','tax'),t('t4','Medicare','tax'),t('d1','Health insurance','ded'),t('d2','Dental and vision','ded'),t('d3','401(k) or retirement','ded'),t('d4','Other deductions','ded')]}}
+function stubDefaults(){const t=(id,name,type)=>({id,name,amount:'',type});return{period:'biweekly',gross:'',items:[t('t1','Federal income tax','tax'),t('t2','State income tax','tax'),t('t3','Social Security','tax'),t('t4','Medicare','tax'),t('d1','Health insurance','ded'),t('d3','401(k)','ded'),t('d4','Other deductions','ded')]}}
 function stub(){if(!S.stub||!Array.isArray(S.stub.items))S.stub=stubDefaults();return S.stub}
 function cleanStub(x){
   if(!x||typeof x!=='object'||!Array.isArray(x.items))return null;
@@ -342,7 +342,7 @@ function defKey(n,type){
     return null;
   }
   if(/health|hlth|medical/.test(s))return 'd1';
-  if(/dental|vision/.test(s))return 'd2';
+  if(/dental|vision/.test(s))return 'd1';
   if(/401|403|roth|retire|pension/.test(s))return 'd3';
   return null;
 }
@@ -352,7 +352,7 @@ function applyStub(p){
   if(p.gross)st.gross=r2(p.gross);
   const extra=[];
   p.items.forEach(it=>{
-    const k=defKey(it.name,it.type),d=k&&st.items.find(x=>x.id===k);
+    const k=defKey(it.name,it.type)||(it.type==='ded'?'d4':null),d=k&&st.items.find(x=>x.id===k);
     if(d){d.amount=r2((parseFloat(d.amount)||0)+it.amount);return}
     const ex=extra.find(x=>x.name.toLowerCase()===it.name.toLowerCase()&&x.type===it.type);
     if(ex)ex.amount=r2((parseFloat(ex.amount)||0)+it.amount);
@@ -426,7 +426,17 @@ function stubPick(inp){
   r.readAsDataURL(f);
 }
 function stubClear(){stubFile=null;stubStat=null;render()}
-function refreshStub(){const e=$('stubOut');if(e)e.innerHTML=stubOut()}
+const PCOL=['#d9534f','#e8833a','#d9a82b','#8e6bbf','#3a8fb7','#c0568f','#2f9e8f','#7a8896','#5b7fd1','#a0703c'];
+function stubNet(){const c=stubCalc();return `<span>Net pay per paycheck</span><b style="color:var(--sav)">${c.g>0?fmt(c.net):'$0.00'}</b>`}
+function stubPaycheck(){
+  const c=stubCalc();
+  if(!(c.g>0))return '';
+  const rows=[...c.tax,...c.ded].filter(r=>r.v>0).map((r,n)=>({name:r.name,v:r.v,col:PCOL[n%PCOL.length]}));
+  const net=Math.max(0,c.net);rows.push({name:'Net pay',v:net,col:'var(--sav)'});
+  const line=r=>`<div class="item" style="cursor:default"><span><i class="dot" style="background:${r.col}"></i>${esc(r.name)}</span><span class="amt">${fmt(r.v)}<small class="wy pc">${(r.v/c.g*100).toFixed(1)}%</small></span></div>`;
+  return `<div class="card" style="padding:2px 16px 8px"><h2>Where each paycheck goes</h2>${pie(rows.map(r=>[r.v,r.col]))}${rows.map(line).join('')}</div>`;
+}
+function refreshStub(){const e=$('stubOut');if(e)e.innerHTML=stubOut();const n=$('stubNet');if(n)n.innerHTML=stubNet();const q=$('stubPie');if(q)q.innerHTML=stubPaycheck()}
 function stubGross(v){stub().gross=v;save();refreshStub()}
 function stubPeriod(v){stub().period=v;save();refreshStub()}
 function stubSet(id,v){const i=stub().items.find(x=>x.id===id);if(i){i.amount=v;save();refreshStub()}}
@@ -464,9 +474,10 @@ function stubView(){
   const inp=i=>`<div class="row" style="padding:6px 0"><span>${esc(i.name)}</span><span style="display:flex;align-items:center;gap:6px">$<input type="number" inputmode="decimal" step="0.01" min="0" value="${esc(i.amount)}" onchange="stubSet('${i.id}',this.value)" aria-label="${esc(i.name)}" style="width:96px;padding:7px 10px;font-size:15px;text-align:right;background:var(--bg)"><button onclick="stubDel('${i.id}')" aria-label="Remove ${esc(i.name)}" style="width:30px;height:30px;border:1px solid var(--ln);border-radius:8px;background:var(--sf);color:var(--mut);font-size:16px;padding:0">×</button></span></div>`;
   const prev=stubFile?`<div style="margin-top:10px">${stubFile.img?`<img src="${stubFile.img}" alt="Your paystub" style="width:100%;max-height:280px;object-fit:contain;border-radius:8px;background:var(--bg)">`:''}<div class="row" style="padding:6px 0 0;border:0"><span>${esc(stubFile.name)}</span><button onclick="stubClear()" style="background:none;border:0;color:var(--spd);text-decoration:underline;font:inherit">Remove</button></div></div>`:'';
   return `<div class="ls"><h1>Paystub</h1>
-  <div class="card" style="padding:12px 16px"><button class="add" style="margin:0" onclick="document.getElementById('sf').click()">Upload paystub</button>${prev}<div id="stubStat">${statHtml()}</div><div class="empty" style="padding:8px 0 0">Your paystub is read on your phone and never uploaded or saved. The amounts below are filled in for you, and you can edit any of them.</div><details style="margin-top:6px"><summary style="font-size:13px;color:var(--spd);cursor:pointer">Having trouble? Paste the text instead</summary><textarea id="stp" rows="5" placeholder="Copy the text from your paystub and paste it here" style="width:100%;margin-top:8px;font:12px monospace;padding:10px;border:1px solid var(--ln);border-radius:10px;background:var(--bg);color:var(--ink)"></textarea><button class="add" style="margin:8px 0 0;font-size:14px;padding:10px" onclick="stubPaste()">Fill in from this text</button></details><div style="font-size:11px;color:var(--mut);margin-top:8px">Paystub reader v9</div></div>
+  <div class="card" style="padding:12px 16px"><button class="add" style="margin:0" onclick="document.getElementById('sf').click()">Upload paystub</button>${prev}<div id="stubStat">${statHtml()}</div><div class="empty" style="padding:8px 0 0">Your paystub is read on your phone and never uploaded or saved. The amounts below are filled in for you, and you can edit any of them.</div><details style="margin-top:6px"><summary style="font-size:13px;color:var(--spd);cursor:pointer">Having trouble? Paste the text instead</summary><textarea id="stp" rows="5" placeholder="Copy the text from your paystub and paste it here" style="width:100%;margin-top:8px;font:12px monospace;padding:10px;border:1px solid var(--ln);border-radius:10px;background:var(--bg);color:var(--ink)"></textarea><button class="add" style="margin:8px 0 0;font-size:14px;padding:10px" onclick="stubPaste()">Fill in from this text</button></details><div style="font-size:11px;color:var(--mut);margin-top:8px">Paystub reader v10</div></div>
   <div class="card inc" style="padding:6px 16px 10px"><label for="sp">How often are you paid?</label><select id="sp" onchange="stubPeriod(this.value)">${Object.entries(PERIODS).map(([k,v])=>`<option value="${k}"${st.period===k?' selected':''}>${v.n}</option>`).join('')}</select>
-  <div class="row" style="padding:10px 0 0;border:0"><span>Gross pay per paycheck</span><span style="display:flex;align-items:center;gap:6px">$<input type="number" inputmode="decimal" step="0.01" min="0" value="${esc(st.gross)}" onchange="stubGross(this.value)" aria-label="Gross pay" style="width:110px;padding:7px 10px;font-size:15px;text-align:right;background:var(--bg)"></span></div></div>
+  <div class="row" style="padding:10px 0 0;border:0"><span>Gross pay per paycheck</span><span style="display:flex;align-items:center;gap:6px">$<input type="number" inputmode="decimal" step="0.01" min="0" value="${esc(st.gross)}" onchange="stubGross(this.value)" aria-label="Gross pay" style="width:110px;padding:7px 10px;font-size:15px;text-align:right;background:var(--bg)"></span></div><div class="row" id="stubNet" style="padding:10px 0 0;border:0">${stubNet()}</div></div>
+  <div id="stubPie">${stubPaycheck()}</div>
   <div class="card bill"><h2>Taxes (per paycheck)</h2>${st.items.filter(i=>i.type==='tax').map(inp).join('')}</div>
   <div class="card inc"><h2>Deductions (per paycheck)</h2>${st.items.filter(i=>i.type==='ded').map(inp).join('')}</div>
   <button class="add" style="margin:0 0 12px;background:var(--sf);color:var(--ink);border:1px solid var(--ln)" onclick="stubAdd()">Add a category</button>
