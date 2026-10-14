@@ -110,6 +110,8 @@ h1{font-size:15px;font-weight:600;color:var(--mut);margin:0 0 12px}
 .tabs button.on{color:var(--ink);box-shadow:inset 0 3px 0 var(--spd)}
 .ov{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:flex-end;justify-content:center;z-index:5}
 .ov.show{display:flex}
+.ov.mid{align-items:center;padding:16px}
+.ov.mid .sheet{border-radius:20px;max-width:420px;padding-bottom:20px}
 .sheet{max-height:92vh;overflow-y:auto;background:var(--sf);width:100%;max-width:520px;border-radius:20px 20px 0 0;padding:20px 16px calc(20px + env(safe-area-inset-bottom,0px))}
 .sheet h3{margin:0 0 12px;font-size:18px}
 label{display:block;font-size:13px;color:var(--mut);margin:10px 0 4px}
@@ -125,6 +127,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
 <main id="app"></main>
 <nav class="tabs" id="tabs"></nav>
 <div class="ov" id="ov"><div class="sheet" id="sheet"></div></div>
+<input type="file" id="xf" accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" style="position:absolute;left:-9999px;width:1px;height:1px;opacity:0" onchange="readExcel(this)">
 <input type="file" id="rf" accept=".json,application/json,text/plain" style="position:absolute;left:-9999px;width:1px;height:1px;opacity:0" onchange="readBackup(this)">
 <input type="file" id="sf" accept="image/*,application/pdf" style="position:absolute;left:-9999px;width:1px;height:1px;opacity:0" onchange="stubPick(this)">
 <script>
@@ -511,7 +514,7 @@ function stubView(){
   const inp=i=>`<div class="row" style="padding:6px 0"><span>${esc(i.name)}</span><span style="display:flex;align-items:center;gap:6px">$<input type="number" inputmode="decimal" step="0.01" min="0" value="${esc(i.amount)}" onchange="stubSet('${i.id}',this.value)" aria-label="${esc(i.name)}" style="width:96px;padding:7px 10px;font-size:15px;text-align:right;background:var(--bg)"><button onclick="stubDel('${i.id}')" aria-label="Remove ${esc(i.name)}" style="width:30px;height:30px;border:1px solid var(--ln);border-radius:8px;background:var(--sf);color:var(--mut);font-size:16px;padding:0">×</button></span></div>`;
   const prev=stubFile?`<div style="margin-top:10px">${stubFile.img?`<img src="${stubFile.img}" alt="Your paystub" style="width:100%;max-height:280px;object-fit:contain;border-radius:8px;background:var(--bg)">`:''}<div class="row" style="padding:6px 0 0;border:0"><span>${esc(stubFile.name)}</span><button onclick="stubClear()" style="background:none;border:0;color:var(--spd);text-decoration:underline;font:inherit">Remove</button></div></div>`:'';
   return `<div class="ls"><h1>Paystub</h1>
-  <div class="card" style="padding:12px 16px"><button class="add" style="margin:0" onclick="document.getElementById('sf').click()">Upload paystub</button>${prev}<div id="stubStat">${statHtml()}</div><div class="empty" style="padding:8px 0 0">Your paystub is read on your phone and never uploaded or saved. The amounts below are filled in for you, and you can edit any of them.</div><details style="margin-top:6px"><summary style="font-size:13px;color:var(--spd);cursor:pointer">Having trouble? Paste the text instead</summary><textarea id="stp" rows="5" placeholder="Copy the text from your paystub and paste it here" style="width:100%;margin-top:8px;font:12px monospace;padding:10px;border:1px solid var(--ln);border-radius:10px;background:var(--bg);color:var(--ink)"></textarea><button class="add" style="margin:8px 0 0;font-size:14px;padding:10px" onclick="stubPaste()">Fill in from this text</button></details><div style="font-size:11px;color:var(--mut);margin-top:8px">Paystub reader v17</div></div>
+  <div class="card" style="padding:12px 16px"><button class="add" style="margin:0" onclick="document.getElementById('sf').click()">Upload paystub</button>${prev}<div id="stubStat">${statHtml()}</div><div class="empty" style="padding:8px 0 0">Your paystub is read on your phone and never uploaded or saved. The amounts below are filled in for you, and you can edit any of them.</div><details style="margin-top:6px"><summary style="font-size:13px;color:var(--spd);cursor:pointer">Having trouble? Paste the text instead</summary><textarea id="stp" rows="5" placeholder="Copy the text from your paystub and paste it here" style="width:100%;margin-top:8px;font:12px monospace;padding:10px;border:1px solid var(--ln);border-radius:10px;background:var(--bg);color:var(--ink)"></textarea><button class="add" style="margin:8px 0 0;font-size:14px;padding:10px" onclick="stubPaste()">Fill in from this text</button></details><div style="font-size:11px;color:var(--mut);margin-top:8px">Paystub reader v18</div></div>
 <div class="card inc gt-iv" id="stubNet" style="padding:8px 16px">${stubNet()}</div>
   <div id="stubPie">${stubPaycheck()}</div>
   <h1>Weekly and yearly breakdown</h1><div id="stubOut">${stubOut()}</div>
@@ -593,8 +596,7 @@ function weekView(){
   <div class="row"><span><i class="dot" style="background:var(--spd)"></i>Spending${inc>0?' · '+Math.round(Math.max(spd,0)/inc*100)+'%':''}</span><b>${fmt(spd*52)}</b></div></div>`;
   const onlyTot=(l,c)=>tot(sum(l.map(x=>x.amount*factor[x.rep])),c);
   h+=`<div class="card inc" ${nav('income')}><h2>Income</h2>${onlyTot(S.income,'iv')}</div><div class="card bill" ${nav('bills')}><h2>Bills</h2>${onlyTot(S.bills,'bv')}</div><div class="card green" ${nav('savings')}><h2>Savings</h2>${tot(savT,'sv')}</div>`;
-  const sec='background:var(--sf);color:var(--ink);border:1px solid var(--ln)';
-  h+=`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">${hasDl?'<button class="add" style="flex:1;margin:0" onclick="exportXlsx()">Export to Excel</button><button class="add" style="flex:1;margin:0" onclick="saveBackup()">Save backup</button>':''}${canDrive()?`<button class="add" style="flex:1;margin:0;${sec}" onclick="driveSheet()">Google Drive</button>`:''}<button class="add" style="flex:1;margin:0;${sec}" onclick="copySheet()">Copy backup</button><button class="add" style="flex:1;margin:0;${sec}" onclick="restoreSheet()">Restore backup</button></div>`;
+  h+=`<button class="add" style="margin:12px 0 0" onclick="saveRestoreSheet()">Save/Restore</button>`;
   return '<div class="wk">'+h+'</div>';
 }
 function setTarget(v){S.target=v===''?'':String(Math.max(0,parseFloat(v)||0));save();render()}
@@ -691,7 +693,7 @@ function cleanBackup(d){
   return{
     bills:arr(d.bills).map((x,i)=>Object.assign(dated(x,i,'b'),{remind:[-1,0,1,2,3,7].includes(Number(x.remind))?Number(x.remind):-1,pay:(x.pay==='auto'||x.pay==='manual')?x.pay:undefined,payBy:['mail','website','other'].includes(x.payBy)?x.payBy:'',payNote:str(x.payNote,80),link:cleanLink(str(x.link,500))})),
     income:arr(d.income).map((x,i)=>dated(x,i,'i')),
-    savings:arr(d.savings).map((x,i)=>Object.assign(base(x,i,'s'),{per:x.per==='week'?'week':'month'},x.mode==='pct'?{mode:'pct',pct:Math.min(100,Math.max(0,Number(x.pct)||0)),per:'week'}:{}))
+    savings:arr(d.savings).map((x,i)=>Object.assign(base(x,i,'s'),{per:x.per==='week'?'week':'month'},x.mode==='pct'?{mode:'pct',pct:Math.min(100,Math.max(0,Number(x.pct)||0)),per:'week'}:{mode:'amt'}))
   };
 }
 const taStyle='width:100%;font:12px monospace;padding:10px;border:1px solid var(--ln);border-radius:10px;background:var(--bg);color:var(--ink)';
@@ -752,6 +754,79 @@ function driveSheet(){
   $('sheet').innerHTML=id?`<h3>Google Drive backup</h3><div style="color:var(--mut);margin-bottom:10px;font-size:14px">Save puts a file named weekly-budget-backup.json in your Google Drive. Restore reads the newest copy back into this device. The app can only see files it created.</div><button class="add" style="margin:0 0 8px" onclick="driveSave()">Save to Google Drive</button><button class="add" style="margin:0;${sec}" onclick="driveRestore()">Restore from Google Drive</button><div id="dm" style="font-size:13px;min-height:18px;margin-top:10px"></div><div class="btns"><button onclick="closeForm()">Close</button></div>${GCID?'':'<div style="margin-top:8px"><button style="background:none;border:0;padding:0;font:inherit;font-size:12px;color:var(--mut);text-decoration:underline" onclick="resetGcid()">Change Client ID</button></div>'}`
   :`<h3>Google Drive backup</h3><div style="color:var(--mut);margin-bottom:8px;font-size:14px">Google Drive needs a free Client ID from your Google account, set up once. Paste it here.</div><label for="gc">Client ID</label><input id="gc" placeholder="1234-abcd.apps.googleusercontent.com" autocapitalize="off" autocorrect="off" spellcheck="false"><div id="dm" style="font-size:13px;min-height:18px;margin-top:8px"></div><div class="btns"><button onclick="closeForm()">Cancel</button><button class="pri" onclick="setGcid()">Save Client ID</button></div>`;
   $('ov').classList.add('show');
+}
+const INTK='wb_internal';
+function saveInternal(){
+  try{localStorage.setItem(INTK,backupText());msg('Saved','Internal backup saved on this device at '+new Date().toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})+'. It is kept in this browser, so clearing the browser data would erase it too.')}
+  catch(e){msg('Could not save','This browser would not let the app store a backup.')}
+}
+function restoreInternal(){
+  let t=null;try{t=localStorage.getItem(INTK)}catch(e){}
+  if(!t){msg('No internal backup','Nothing has been saved yet. Use Save to Internal Backup first.');return}
+  if(!tryRestore(t))msg('Could not restore','The internal backup could not be read.');
+}
+function internalInfo(){
+  try{const t=localStorage.getItem(INTK);if(!t)return 'No internal backup yet.';const o=JSON.parse(t);return 'Internal backup from '+new Date(o.savedAt).toLocaleString([],{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})+'.'}catch(e){return ''}
+}
+function excelData(wb){
+  const names=['Bills','Income','Savings'];
+  if(!names.some(n=>wb.Sheets[n]))return null;
+  const rows=n=>wb.Sheets[n]?XLSX.utils.sheet_to_json(wb.Sheets[n],{defval:''}).filter(r=>{const v=String(Object.values(r)[0]).trim();return v&&v.toLowerCase()!=='total'}):[];
+  const dstr=v=>{if(v instanceof Date&&!isNaN(v))return iso(new Date(v.getTime()+12*36e5));const t=String(v||'').trim();return /^\d{4}-\d{2}-\d{2}$/.test(t)?t:''};
+  const repMap={'every month':'monthly','every 2 weeks':'biweekly','every week':'weekly','once':'once'};
+  const rep=v=>repMap[String(v).trim().toLowerCase()]||'monthly';
+  const num=v=>Math.max(0,parseFloat(String(v).replace(/[^0-9.\-]/g,''))||0);
+  const remMap={'on the due date':0,'1 day before':1,'2 days before':2,'3 days before':3,'1 week before':7};
+  const nm=r=>String(Object.values(r)[0]).trim();
+  const bills=rows('Bills').map(r=>{
+    const raw=String(r['Payment']||'').trim(),pay=raw.toLowerCase();
+    const o={name:nm(r),amount:num(r['Amount']),date:dstr(r['Due date']),rep:rep(r['Repeats']),remind:remMap[String(r['Reminder']||'').trim().toLowerCase()]??-1,link:String(r['Link']||'').trim()};
+    if(pay==='auto pay')o.pay='auto';
+    else if(pay==='pay by mail'){o.pay='manual';o.payBy='mail'}
+    else if(pay==='pay on website'){o.pay='manual';o.payBy='website'}
+    else if(pay.startsWith('pay:')){o.pay='manual';o.payBy='other';o.payNote=raw.slice(4).trim()}
+    return o;
+  });
+  const income=rows('Income').map(r=>({name:nm(r),amount:num(r['Amount']),date:dstr(r['Pay date']),rep:rep(r['Repeats'])}));
+  const savings=rows('Savings').map(r=>{
+    const per=String(r['Per']||'').toLowerCase(),isPct=per.indexOf('%')>=0||/%/.test(String(r['Amount']));
+    return isPct?{name:nm(r),mode:'pct',pct:num(r['Amount']),amount:0,per:'week'}:{name:nm(r),mode:'amt',amount:num(r['Amount']),per:per==='week'?'week':'month'};
+  });
+  return{bills,income,savings};
+}
+function readExcel(inp){
+  const f=inp.files&&inp.files[0];inp.value='';
+  if(!f)return;
+  if(!window.XLSX){msg('Not ready','The Excel reader has not loaded. Check your internet connection and try again.');return}
+  const r=new FileReader();
+  r.onload=()=>{
+    try{
+      const wb=XLSX.read(r.result,{type:'array',cellDates:true}),d=excelData(wb);
+      if(!d){msg('Could not restore','This file does not look like a Weekly Budget export. It needs the Bills, Income or Savings sheets.');return}
+      pending=cleanBackup(d);pending.goal=S.goal||'';pending.stub=S.stub||null;
+      msg('Restore from Excel?',`This file has ${pending.bills.length} bills, ${pending.income.length} income and ${pending.savings.length} savings entries. It replaces those on this device. Your savings goal and paystub stay as they are.`,[['Cancel',''],['Restore','applyRestore()']]);
+    }catch(e){msg('Could not restore','The Excel file could not be read.')}
+  };
+  r.onerror=()=>msg('Could not restore','The file could not be read.');
+  r.readAsArrayBuffer(f);
+}
+function saveRestoreSheet(){
+  const sec='background:var(--sf);color:var(--ink);border:1px solid var(--ln)',b=(label,fn,st)=>`<button class="add" style="margin:0 0 8px;font-size:15px;padding:12px;${st||''}" onclick="${fn}">${label}</button>`;
+  const hd=t=>`<div style="font-size:13px;font-weight:600;color:var(--mut);margin:12px 0 8px">${t}</div>`;
+  $('sheet').innerHTML=`<h3 style="margin-bottom:0">Save / Restore</h3>
+  ${hd('Save')}
+  ${hasDl?b('Export to Excel',"closeForm();exportXlsx()")+b('Save backup file',"closeForm();saveBackup()",sec):''}
+  ${b('Save to Internal Backup','saveInternal()',sec)}
+  ${canDrive()?b('Save to Google Drive','driveSheet()',sec):''}
+  ${b('Copy backup text','copySheet()',sec)}
+  ${hd('Restore')}
+  ${b('Restore from Excel',"closeForm();document.getElementById('xf').click()",sec)}
+  ${b('Restore from Internal Backup','restoreInternal()',sec)}
+  ${canDrive()?b('Restore from Google Drive','driveSheet()',sec):''}
+  ${b('Restore from backup file or text','restoreSheet()',sec)}
+  <div style="font-size:12px;color:var(--mut);margin:2px 0 4px">${esc(internalInfo())}</div>
+  <div class="btns" style="margin-top:8px"><button class="pri" onclick="closeForm()">Close</button></div>`;
+  $('ov').classList.add('mid','show');
 }
 function copySheet(){
   $('sheet').innerHTML=`<h3>Copy backup</h3><div style="color:var(--mut);margin-bottom:8px">Copy this text and keep it somewhere safe, such as a note. Paste it into Restore backup to bring your budget back.</div><textarea id="bt" readonly rows="6" style="${taStyle}"></textarea><div id="cm" style="color:var(--sav);font-size:13px;min-height:18px;margin-top:6px"></div><div class="btns"><button onclick="closeForm()">Close</button><button class="pri" onclick="doCopy()">Copy</button></div>`;
@@ -834,7 +909,7 @@ function potSheet(){
   <div class="btns"><button class="pri" onclick="closeForm()">Close</button></div>`;
   $('ov').classList.add('show');
 }
-function closeForm(){$('ov').classList.remove('show');pot=null;const pb=document.getElementById('pb');if(pb)pb.value=''}
+function closeForm(){$('ov').classList.remove('show','mid');pot=null;const pb=document.getElementById('pb');if(pb)pb.value=''}
 const swHtml=v=>`<div style="display:flex;align-items:center;gap:12px;margin:14px 0 4px"><span id="sw_a">Amount</span><label class="sw"><input type="checkbox" id="f_sw" ${v.mode==='pct'?'checked':''} onchange="savUI()" aria-label="Use a percentage of spending money"><span class="trk"></span></label><span id="sw_p">Percent of spending</span></div>`;
 function savUI(){const p=$('f_sw').checked;$('amt_g').style.display=p?'none':'';$('per_g').style.display=p?'none':'';$('pct_g').style.display=p?'':'none';[['sw_a',!p],['sw_p',p]].forEach(([id,on])=>{$(id).style.fontWeight=on?'700':'400';$(id).style.color=on?'var(--ink)':'var(--mut)'})}
 function saveForm(kind,id){
