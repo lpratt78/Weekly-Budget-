@@ -255,20 +255,132 @@ function stubCalc(){
   const tax=of('tax'),ded=of('ded'),tt=sum(tax.map(r=>r.v)),td=sum(ded.map(r=>r.v));
   return{st,y,g,tax,ded,tt,td,net:g-tt-td,wk:v=>v*y/52,yr:v=>v*y};
 }
-let stubFile=null;
+let stubFile=null,stubStat=null;
+const statHtml=()=>!stubStat?'':`<div style="margin-top:10px;font-size:13px;color:${stubStat.k==='err'||stubStat.k==='warn'?'var(--bill)':stubStat.k==='ok'?'var(--sav)':'var(--mut)'}">${esc(stubStat.t)}</div>`;
+function setStat(k,t){stubStat={k,t};const e=$('stubStat');if(e)e.innerHTML=statHtml()}
+const libs={};
+function loadScript(src){return libs[src]||(libs[src]=new Promise((res,rej)=>{const e=document.createElement('script');e.src=src;e.onload=res;e.onerror=()=>{delete libs[src];rej(new Error('load'))};document.head.appendChild(e)}))}
+const PDFJS='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js',PDFJS_W='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js',TESS='https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
+const MONEY=/\(?-?\$?\s?\d{1,3}(?:,\d{3})+\.\d{2}\)?|\(?-?\$?\s?\d+\.\d{2}\)?/g;
+const moneyOf=m=>Math.abs(parseFloat(m.replace(/[^\d.]/g,'')));
+const TAX_RE=/federal|\bfed\b|\bfit\b|\bstate\b|\bsit\b|social\s*security|soc\s*sec|oasdi|fica|medicare|\blocal\b|\bcity\b|county|\bsdi\b|\bsui\b|\bfli\b|pfml|income tax|occupational|head tax|school/i;
+const DED_RE=/health|medical|dental|vision|401|403|roth|retire|pension|\bhsa\b|\bfsa\b|life|disab|\bstd\b|\bltd\b|union|dues|garnish|child support|insurance|ad&d|accident|critical|legal|parking|transit|commuter|loan|savings|espp|charity|united way|\bsupp/i;
+const EARN_RE=/regular|overtime|\bot\b|holiday|vacation|\bpto\b|bonus|salary|hourly|sick|earnings|wages|commission|reimburs|per diem|stipend/i;
+const HEAD_RE=/^(employee )?(taxes|tax withholdings?|withholdings?|statutory.*|deductions?|pre-?tax deductions?|post-?tax deductions?|before-?tax deductions?|after-?tax deductions?|benefits?( & deductions?)?|earnings|employer.*|net pay.*|direct deposit.*|summary.*)$/;
+const niceName=n=>n.toLowerCase().split(' ').filter(Boolean).map(w=>w.length<=2&&/^[a-z]+$/.test(w)?w.toUpperCase():/^(fica|oasdi|sdi|sui|hsa|fsa|fli|pfml|401\(?k\)?|403\(?b\)?|ad&d|std|ltd)$/.test(w)?w.toUpperCase():w[0].toUpperCase()+w.slice(1)).join(' ');
+function parseStub(lines){
+  const L=lines.map(x=>x.replace(/\s+/g,' ').trim()).filter(Boolean);
+  const out={period:null,gross:null,net:null,items:[]},all=L.join('\n').toLowerCase();
+  if(/semi[- ]?monthly|twice a month/.test(all))out.period='semi';
+  else if(/bi[- ]?weekly|every (two|2) weeks/.test(all))out.period='biweekly';
+  else if(/\bweekly\b/.test(all))out.period='week';
+  else if(/\bmonthly\b/.test(all))out.period='month';
+  if(!out.period){
+    const m=all.match(/(\d{1,2})[\/-](\d{1,2})[\/-](\d{2,4})\s*(?:-|–|to|thru|through)\s*(\d{1,2})[\/-](\d{1,2})[\/-](\d{2,4})/);
+    if(m){const yy=v=>+v<100?2000+ +v:+v,d1=new Date(yy(m[3]),m[1]-1,m[2]),d2=new Date(yy(m[6]),m[4]-1,m[5]),n=Math.round((d2-d1)/864e5);
+      out.period=n>=0&&n<=8?'week':n>=12&&n<=13?'biweekly':n>=14&&n<=15?'semi':n>=27&&n<=31?'month':null;
+      if(n===13)out.period='biweekly'}
+  }
+  const first=(re)=>{for(const l of L){if(re.test(l.toLowerCase())){const a=(l.match(MONEY)||[]).map(moneyOf);if(a.length&&a[0]>0)return a[0]}}return null};
+  out.gross=first(/gross\s*(pay|earnings|wages)/)||first(/total\s*(gross|earnings)/)||first(/total\s*pay/)||first(/\bgross\b/);
+  out.net=first(/net\s*pay(?!.*distribution)|take[- ]home|net\s*amount/);
+  let sec='';
+  L.forEach(l=>{
+    const am=(l.match(MONEY)||[]).map(moneyOf);
+    const label=l.replace(MONEY,' ').replace(/[$|:]/g,' ').replace(/\b(current|ytd|year to date|this period|amount|description|hours|rate|type)\b/gi,' ').replace(/\s+/g,' ').trim().toLowerCase();
+    if(HEAD_RE.test(label)){sec=/tax|withhold|statutory/.test(label)?'tax':/deduct|benefit/.test(label)?'ded':/earn/.test(label)?'earn':'end';return}
+    if(!am.length||!(am[0]>0)||am[0]>=100000)return;
+    if((label.match(/[a-z]/g)||[]).length<3&&!DED_RE.test(label)&&!TAX_RE.test(label))return;
+    if(/^(total|subtotal|sub total|ytd|gross|net)\b/.test(label)||/\b(total|net pay|gross pay)\b/.test(label))return;
+    if(sec==='end'||sec==='earn')return;
+    let type=null;
+    if(EARN_RE.test(label)&&!TAX_RE.test(label)&&!DED_RE.test(label))return;
+    if(TAX_RE.test(label))type='tax';else if(DED_RE.test(label))type='ded';else if(sec==='tax'||sec==='ded')type=sec;
+    if(!type)return;
+    out.items.push({name:niceName(label.replace(/[^a-z0-9&()\/ -]/g,' ').replace(/\s+/g,' ').trim()).slice(0,60),amount:am[0],type});
+  });
+  return out;
+}
+function defKey(n,type){
+  const s=n.toLowerCase();
+  if(type==='tax'){
+    if(/disab|\bsdi\b|\bsui\b|\bfli\b|pfml/.test(s))return null;
+    if(/social\s*security|soc\s*sec|oasdi|^fica$|fica\s*ss/.test(s))return 't3';
+    if(/medicare/.test(s))return 't4';
+    if(/federal|\bfed\b|\bfit\b|\bfwt\b/.test(s))return 't1';
+    if(/\bstate\b|\bst\b|\bsit\b/.test(s))return 't2';
+    return null;
+  }
+  if(/health|medical/.test(s))return 'd1';
+  if(/dental|vision/.test(s))return 'd2';
+  if(/401|403|roth|retire|pension/.test(s))return 'd3';
+  return null;
+}
+function applyStub(p){
+  const st=stubDefaults(),r2=n=>String(Math.round(n*100)/100);
+  st.period=p.period||stub().period;
+  if(p.gross)st.gross=r2(p.gross);
+  const extra=[];
+  p.items.forEach(it=>{
+    const k=defKey(it.name,it.type),d=k&&st.items.find(x=>x.id===k);
+    if(d){d.amount=r2((parseFloat(d.amount)||0)+it.amount);return}
+    const ex=extra.find(x=>x.name.toLowerCase()===it.name.toLowerCase()&&x.type===it.type);
+    if(ex)ex.amount=r2((parseFloat(ex.amount)||0)+it.amount);
+    else extra.push({id:'x'+extra.length+Date.now().toString(36),name:it.name,amount:r2(it.amount),type:it.type});
+  });
+  st.items=st.items.concat(extra);
+  S.stub=st;save();
+}
+async function ocrLines(src){
+  await loadScript(TESS);
+  const r=await Tesseract.recognize(src,'eng',{logger:m=>{if(m.status==='recognizing text')setStat('busy','Reading your paystub… '+Math.round(m.progress*100)+'%')}});
+  return r.data.text.split('\n');
+}
+async function pdfLines(file){
+  await loadScript(PDFJS);
+  const lib=window.pdfjsLib;lib.GlobalWorkerOptions.workerSrc=PDFJS_W;
+  const doc=await lib.getDocument({data:await file.arrayBuffer()}).promise;
+  let lines=[];
+  for(let n=1;n<=Math.min(doc.numPages,3);n++){
+    const tc=await (await doc.getPage(n)).getTextContent(),rows=[];
+    tc.items.forEach(it=>{if(!it.str||!it.str.trim())return;const y=it.transform[5],x=it.transform[4];let r=rows.find(q=>Math.abs(q.y-y)<3);if(!r){r={y,c:[]};rows.push(r)}r.c.push({x,s:it.str})});
+    rows.sort((a,b)=>b.y-a.y).forEach(r=>{r.c.sort((a,b)=>a.x-b.x);lines.push(r.c.map(c=>c.s).join('  '))});
+  }
+  if(lines.join('').length<40){
+    const page=await doc.getPage(1),vp=page.getViewport({scale:2}),cv=document.createElement('canvas');
+    cv.width=vp.width;cv.height=vp.height;await page.render({canvasContext:cv.getContext('2d'),viewport:vp}).promise;
+    stubFile.img=cv.toDataURL('image/jpeg',0.7);lines=await ocrLines(cv);
+  }
+  return lines;
+}
+async function stubRead(file,isPdf){
+  setStat('busy','Reading your paystub…');
+  let lines;
+  try{lines=isPdf?await pdfLines(file):await ocrLines(stubFile.cv)}
+  catch(e){stubStat={k:'err',t:'Could not read this file automatically. Check your connection, or type the amounts in below.'};render();return}
+  const p=parseStub(lines);
+  if(!(p.gross>0)&&!p.items.length){stubStat={k:'err',t:'I could not find pay amounts in this file. A clearer photo or a PDF works best, or type the amounts in below.'};render();return}
+  applyStub(p);
+  const c=stubCalc();let k='ok',t='Filled in from your paystub. Check the amounts and edit anything that looks off.';
+  if(p.net>0){
+    if(Math.abs(c.net-p.net)<=1)t='Filled in from your paystub, and the take-home matches your stub ('+fmt(p.net)+'). Edit anything that looks off.';
+    else{k='warn';t='Filled in from your paystub, but the take-home from these numbers is '+fmt(c.net)+' and your stub says '+fmt(p.net)+'. Something may be missing or misread, so check the amounts and edit them.'}
+  }
+  stubStat={k,t};render();
+}
 function stubPick(inp){
   const f=inp.files&&inp.files[0];inp.value='';
   if(!f)return;
-  if(f.type.startsWith('image/')){
-    const r=new FileReader();
-    r.onload=()=>{const im=new Image();
-      im.onload=()=>{const k=Math.min(1,1100/Math.max(im.width,im.height)),cv=document.createElement('canvas');cv.width=Math.round(im.width*k);cv.height=Math.round(im.height*k);cv.getContext('2d').drawImage(im,0,0,cv.width,cv.height);stubFile={name:f.name,img:cv.toDataURL('image/jpeg',0.8)};render()};
-      im.onerror=()=>{stubFile={name:f.name};render()};
-      im.src=r.result};
-    r.readAsDataURL(f);
-  }else{stubFile={name:f.name};render()}
+  stubStat=null;
+  if(f.type==='application/pdf'||/\.pdf$/i.test(f.name)){stubFile={name:f.name};render();stubRead(f,true);return}
+  const r=new FileReader();
+  r.onload=()=>{const im=new Image();
+    im.onload=()=>{const k=Math.min(1,1800/Math.max(im.width,im.height)),cv=document.createElement('canvas');cv.width=Math.round(im.width*k);cv.height=Math.round(im.height*k);cv.getContext('2d').drawImage(im,0,0,cv.width,cv.height);stubFile={name:f.name,img:cv.toDataURL('image/jpeg',0.8),cv};render();stubRead(f,false)};
+    im.onerror=()=>{stubFile={name:f.name};stubStat={k:'err',t:'This photo format could not be opened. Try a screenshot or a PDF instead, or type the amounts in below.'};render()};
+    im.src=r.result};
+  r.readAsDataURL(f);
 }
-function stubClear(){stubFile=null;render()}
+function stubClear(){stubFile=null;stubStat=null;render()}
 function refreshStub(){const e=$('stubOut');if(e)e.innerHTML=stubOut()}
 function stubGross(v){stub().gross=v;save();refreshStub()}
 function stubPeriod(v){stub().period=v;save();refreshStub()}
@@ -307,7 +419,7 @@ function stubView(){
   const inp=i=>`<div class="row" style="padding:6px 0"><span>${esc(i.name)}</span><span style="display:flex;align-items:center;gap:6px">$<input type="number" inputmode="decimal" step="0.01" min="0" value="${esc(i.amount)}" onchange="stubSet('${i.id}',this.value)" aria-label="${esc(i.name)}" style="width:96px;padding:7px 10px;font-size:15px;text-align:right;background:var(--bg)"><button onclick="stubDel('${i.id}')" aria-label="Remove ${esc(i.name)}" style="width:30px;height:30px;border:1px solid var(--ln);border-radius:8px;background:var(--sf);color:var(--mut);font-size:16px;padding:0">×</button></span></div>`;
   const prev=stubFile?`<div style="margin-top:10px">${stubFile.img?`<img src="${stubFile.img}" alt="Your paystub" style="width:100%;max-height:280px;object-fit:contain;border-radius:8px;background:var(--bg)">`:''}<div class="row" style="padding:6px 0 0;border:0"><span>${esc(stubFile.name)}</span><button onclick="stubClear()" style="background:none;border:0;color:var(--spd);text-decoration:underline;font:inherit">Remove</button></div></div>`:'';
   return `<div class="ls"><h1>Paystub</h1>
-  <div class="card" style="padding:12px 16px"><button class="add" style="margin:0" onclick="document.getElementById('sf').click()">Upload paystub</button>${prev}<div class="empty" style="padding:8px 0 0">Your paystub is only shown here and is never saved. Enter the amounts from it below.</div></div>
+  <div class="card" style="padding:12px 16px"><button class="add" style="margin:0" onclick="document.getElementById('sf').click()">Upload paystub</button>${prev}<div id="stubStat">${statHtml()}</div><div class="empty" style="padding:8px 0 0">Your paystub is read on your phone and never uploaded or saved. The amounts below are filled in for you, and you can edit any of them.</div></div>
   <div class="card inc" style="padding:6px 16px 10px"><label for="sp">How often are you paid?</label><select id="sp" onchange="stubPeriod(this.value)">${Object.entries(PERIODS).map(([k,v])=>`<option value="${k}"${st.period===k?' selected':''}>${v.n}</option>`).join('')}</select>
   <div class="row" style="padding:10px 0 0;border:0"><span>Gross pay per paycheck</span><span style="display:flex;align-items:center;gap:6px">$<input type="number" inputmode="decimal" step="0.01" min="0" value="${esc(st.gross)}" onchange="stubGross(this.value)" aria-label="Gross pay" style="width:110px;padding:7px 10px;font-size:15px;text-align:right;background:var(--bg)"></span></div></div>
   <div class="card bill"><h2>Taxes (per paycheck)</h2>${st.items.filter(i=>i.type==='tax').map(inp).join('')}</div>
