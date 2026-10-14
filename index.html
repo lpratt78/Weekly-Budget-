@@ -242,12 +242,12 @@ function goalCard(m){
   <div class="row" style="padding:2px 0;border:0"><span>${met?'Ahead of goal':'Short of goal'}</span><b style="color:${met?'var(--sav)':'var(--bill)'}">${pts} points${met?'':' · '+fmt(m.gap)+' a week'}</b></div></div>`;
 }
 const PERIODS={week:{n:'Every week',y:52},biweekly:{n:'Every 2 weeks',y:26},semi:{n:'Twice a month',y:24},month:{n:'Once a month',y:12}};
-function stubDefaults(){const t=(id,name,type)=>({id,name,amount:'',type});return{period:'biweekly',gross:'',match:'',tgtF:'',tgtS:'',items:[t('t1','Federal income tax','tax'),t('t2','State income tax','tax'),t('t3','Social Security','tax'),t('t4','Medicare','tax'),t('d1','Health insurance','ded'),t('d3','401(k)','ded'),t('d4','Other deductions','ded')]}}
+function stubDefaults(){const t=(id,name,type)=>({id,name,amount:'',type});return{period:'biweekly',gross:'',match:'',tgtF:'',tgtS:'',fs:'s',stRate:'',items:[t('t1','Federal income tax','tax'),t('t2','State income tax','tax'),t('t3','Social Security','tax'),t('t4','Medicare','tax'),t('d1','Health insurance','ded'),t('d3','401(k)','ded'),t('d4','Other deductions','ded')]}}
 function stub(){if(!S.stub||!Array.isArray(S.stub.items))S.stub=stubDefaults();return S.stub}
 function cleanStub(x){
   if(!x||typeof x!=='object'||!Array.isArray(x.items))return null;
   const num=v=>{const n=parseFloat(v);return n>=0?String(n):''};
-  return{period:PERIODS[x.period]?x.period:'biweekly',gross:num(x.gross),match:num(x.match),tgtF:num(x.tgtF),tgtS:num(x.tgtS),items:x.items.filter(i=>i&&typeof i==='object').slice(0,40).map((i,n)=>({id:String(i.id||'x'+n).replace(/[^a-z0-9]/gi,'').slice(0,30)||'x'+n,name:String(i.name||'Other').slice(0,60),amount:num(i.amount),type:i.type==='tax'?'tax':'ded'}))};
+  return{period:PERIODS[x.period]?x.period:'biweekly',gross:num(x.gross),match:num(x.match),tgtF:num(x.tgtF),tgtS:num(x.tgtS),fs:FST[x.fs]?x.fs:'s',stRate:num(x.stRate),items:x.items.filter(i=>i&&typeof i==='object').slice(0,40).map((i,n)=>({id:String(i.id||'x'+n).replace(/[^a-z0-9]/gi,'').slice(0,30)||'x'+n,name:String(i.name||'Other').slice(0,60),amount:num(i.amount),type:i.type==='tax'?'tax':'ded'}))};
 }
 function stubCalc(){
   const st=stub(),y=PERIODS[st.period].y,g=parseFloat(st.gross)||0,m=parseFloat(st.match)||0;
@@ -349,7 +349,7 @@ function defKey(n,type){
 }
 function applyStub(p){
   const st=stubDefaults(),r2=n=>String(Math.round(n*100)/100);
-  st.period=p.period||stub().period;st.tgtF=stub().tgtF||'';st.tgtS=stub().tgtS||'';
+  st.period=p.period||stub().period;st.tgtF=stub().tgtF||'';st.tgtS=stub().tgtS||'';st.fs=stub().fs||'s';st.stRate=stub().stRate||'';if(p.items.some(i=>/^ia\b|iowa/i.test(i.name)))st.stRate='3.8';
   if(p.gross)st.gross=r2(p.gross);
   st.match=p.match>0?r2(p.match):'';
   const extra=[];
@@ -456,6 +456,21 @@ function stubUse(){
   setPaycheck(w.toFixed(2));
   msg('Weekly paycheck updated',`Your weekly paycheck is now ${fmt(w)}, your take-home pay.`);
 }
+const FST={s:{n:'Single',sd:16100,b:[[12400,.10],[50400,.12],[105700,.22],[201775,.24],[256225,.32],[640600,.35],[Infinity,.37]]},m:{n:'Married filing jointly',sd:32200,b:[[24800,.10],[100800,.12],[211400,.22],[403550,.24],[512450,.32],[768700,.35],[Infinity,.37]]},h:{n:'Head of household',sd:24150,b:[[17700,.10],[67450,.12],[105700,.22],[201750,.24],[256200,.32],[640600,.35],[Infinity,.37]]}};
+function fedTax(ti,b){let t=0,lo=0;for(const [hi,r] of b){if(ti>lo)t+=(Math.min(ti,hi)-lo)*r;lo=hi}return t}
+function stubEst(c){
+  const f=FST[c.st.fs]||FST.s,pre=sum(c.ded.filter(r=>r.id==='d1'||r.id==='d3').map(r=>r.v))*c.y,wages=c.g*c.y,ti=Math.max(0,wages-pre-f.sd),rate=parseFloat(c.st.stRate)||0;
+  return{fed:Math.round(fedTax(ti,f.b)*100)/100,state:Math.round(ti*rate/100*100)/100,ti,rate};
+}
+function stubEstimate(){
+  const c=stubCalc();
+  if(!(c.g>0)){stubStat={k:'err',t:'Enter your gross pay first so the targets can be figured from it.'};render();return}
+  const e=stubEst(c),st=stub();
+  st.tgtF=String(e.fed);st.tgtS=e.rate>0?String(e.state):st.tgtS;save();
+  stubStat={k:'ok',t:'Targets estimated from your pay: federal '+fmt(e.fed)+(e.rate>0?', state '+fmt(e.state):'. Enter a state tax rate to estimate the state target too')+'.'};render();
+}
+function stubFs(v){stub().fs=FST[v]?v:'s';save();render()}
+function stubRate(v){stub().stRate=v;save();render()}
 function taxCheck(c){
   const sub=t=>`<div style="font-size:12px;color:var(--mut);margin-top:2px">${t}</div>`;
   const row=(label,id,tgt)=>{
@@ -492,7 +507,7 @@ function stubView(){
   const inp=i=>`<div class="row" style="padding:6px 0"><span>${esc(i.name)}</span><span style="display:flex;align-items:center;gap:6px">$<input type="number" inputmode="decimal" step="0.01" min="0" value="${esc(i.amount)}" onchange="stubSet('${i.id}',this.value)" aria-label="${esc(i.name)}" style="width:96px;padding:7px 10px;font-size:15px;text-align:right;background:var(--bg)"><button onclick="stubDel('${i.id}')" aria-label="Remove ${esc(i.name)}" style="width:30px;height:30px;border:1px solid var(--ln);border-radius:8px;background:var(--sf);color:var(--mut);font-size:16px;padding:0">×</button></span></div>`;
   const prev=stubFile?`<div style="margin-top:10px">${stubFile.img?`<img src="${stubFile.img}" alt="Your paystub" style="width:100%;max-height:280px;object-fit:contain;border-radius:8px;background:var(--bg)">`:''}<div class="row" style="padding:6px 0 0;border:0"><span>${esc(stubFile.name)}</span><button onclick="stubClear()" style="background:none;border:0;color:var(--spd);text-decoration:underline;font:inherit">Remove</button></div></div>`:'';
   return `<div class="ls"><h1>Paystub</h1>
-  <div class="card" style="padding:12px 16px"><button class="add" style="margin:0" onclick="document.getElementById('sf').click()">Upload paystub</button>${prev}<div id="stubStat">${statHtml()}</div><div class="empty" style="padding:8px 0 0">Your paystub is read on your phone and never uploaded or saved. The amounts below are filled in for you, and you can edit any of them.</div><details style="margin-top:6px"><summary style="font-size:13px;color:var(--spd);cursor:pointer">Having trouble? Paste the text instead</summary><textarea id="stp" rows="5" placeholder="Copy the text from your paystub and paste it here" style="width:100%;margin-top:8px;font:12px monospace;padding:10px;border:1px solid var(--ln);border-radius:10px;background:var(--bg);color:var(--ink)"></textarea><button class="add" style="margin:8px 0 0;font-size:14px;padding:10px" onclick="stubPaste()">Fill in from this text</button></details><div style="font-size:11px;color:var(--mut);margin-top:8px">Paystub reader v13</div></div>
+  <div class="card" style="padding:12px 16px"><button class="add" style="margin:0" onclick="document.getElementById('sf').click()">Upload paystub</button>${prev}<div id="stubStat">${statHtml()}</div><div class="empty" style="padding:8px 0 0">Your paystub is read on your phone and never uploaded or saved. The amounts below are filled in for you, and you can edit any of them.</div><details style="margin-top:6px"><summary style="font-size:13px;color:var(--spd);cursor:pointer">Having trouble? Paste the text instead</summary><textarea id="stp" rows="5" placeholder="Copy the text from your paystub and paste it here" style="width:100%;margin-top:8px;font:12px monospace;padding:10px;border:1px solid var(--ln);border-radius:10px;background:var(--bg);color:var(--ink)"></textarea><button class="add" style="margin:8px 0 0;font-size:14px;padding:10px" onclick="stubPaste()">Fill in from this text</button></details><div style="font-size:11px;color:var(--mut);margin-top:8px">Paystub reader v14</div></div>
 <div class="card inc gt-iv" id="stubNet" style="padding:8px 16px">${stubNet()}</div>
   <div id="stubPie">${stubPaycheck()}</div>
   <h1>Weekly and yearly breakdown</h1><div id="stubOut">${stubOut()}</div>
@@ -503,7 +518,7 @@ function stubView(){
   
   <div class="card bill"><h2>Taxes (per paycheck)</h2>${st.items.filter(i=>i.type==='tax').map(inp).join('')}</div>
   <div class="card inc"><h2>Deductions (per paycheck)</h2>${st.items.filter(i=>i.type==='ded').map(inp).join('')}</div>
-  <div class="card" style="padding:6px 16px"><h2>Yearly tax targets</h2><div class="row" style="padding:6px 0"><span>Federal income tax</span><span style="display:flex;align-items:center;gap:6px">$<input type="number" inputmode="decimal" step="0.01" min="0" value="${esc(st.tgtF)}" onchange="stubTgt('tgtF',this.value)" aria-label="Federal tax target for the year" style="width:110px;padding:7px 10px;font-size:15px;text-align:right;background:var(--bg)"></span></div><div class="row" style="padding:6px 0"><span>State income tax</span><span style="display:flex;align-items:center;gap:6px">$<input type="number" inputmode="decimal" step="0.01" min="0" value="${esc(st.tgtS)}" onchange="stubTgt('tgtS',this.value)" aria-label="State tax target for the year" style="width:110px;padding:7px 10px;font-size:15px;text-align:right;background:var(--bg)"></span></div><div class="empty" style="padding:2px 0 6px;text-align:left">Use the total tax you expect to owe for the year, such as from last year's return or the IRS withholding estimator.</div></div>
+  <div class="card" style="padding:6px 16px"><h2>Yearly tax targets</h2><div class="row" style="padding:6px 0"><span>Federal income tax</span><span style="display:flex;align-items:center;gap:6px">$<input type="number" inputmode="decimal" step="0.01" min="0" value="${esc(st.tgtF)}" onchange="stubTgt('tgtF',this.value)" aria-label="Federal tax target for the year" style="width:110px;padding:7px 10px;font-size:15px;text-align:right;background:var(--bg)"></span></div><div class="row" style="padding:6px 0"><span>State income tax</span><span style="display:flex;align-items:center;gap:6px">$<input type="number" inputmode="decimal" step="0.01" min="0" value="${esc(st.tgtS)}" onchange="stubTgt('tgtS',this.value)" aria-label="State tax target for the year" style="width:110px;padding:7px 10px;font-size:15px;text-align:right;background:var(--bg)"></span></div><label for="fs" style="margin-top:8px">Filing status</label><select id="fs" onchange="stubFs(this.value)">${Object.entries(FST).map(([k,v])=>`<option value="${k}"${st.fs===k?' selected':''}>${v.n}</option>`).join('')}</select><div class="row" style="padding:8px 0 0;border:0"><span>State tax rate<small class="wy" style="text-align:left">Flat rate. Iowa is 3.8% for 2026</small></span><span style="display:flex;align-items:center;gap:6px"><input type="number" inputmode="decimal" step="0.01" min="0" max="20" value="${esc(st.stRate)}" onchange="stubRate(this.value)" aria-label="State tax rate" style="width:80px;padding:7px 10px;font-size:15px;text-align:right;background:var(--bg)">%</span></div><button class="add" style="margin:10px 0 6px;font-size:14px;padding:10px" onclick="stubEstimate()">Estimate targets from my pay</button><div class="empty" style="padding:2px 0 6px;text-align:left">The estimate uses 2026 federal brackets and the standard deduction, treats health insurance and 401(k) as pre-tax, and ignores credits, dependents and other income. For an exact figure, enter your own number from last year's return or the IRS withholding estimator.</div></div>
   <div class="card" style="padding:6px 16px"><div class="row" style="padding:6px 0;border:0"><span>Company 401(k) match<small class="wy" style="text-align:left">paid by your employer, not taken from your pay</small></span><span style="display:flex;align-items:center;gap:6px">$<input type="number" inputmode="decimal" step="0.01" min="0" value="${esc(st.match)}" onchange="stubMatch(this.value)" aria-label="Company 401(k) match" style="width:96px;padding:7px 10px;font-size:15px;text-align:right;background:var(--bg)"></span></div></div>
   <button class="add" style="margin:0 0 12px;background:var(--sf);color:var(--ink);border:1px solid var(--ln)" onclick="stubAdd()">Add a category</button>
   </div>`;
