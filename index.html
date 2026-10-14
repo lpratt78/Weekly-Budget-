@@ -91,6 +91,7 @@ h1{font-size:15px;font-weight:600;color:var(--mut);margin:0 0 12px}
 .dl li{margin:2px 0}
 .ls .dl{font-size:12px}
 .ytdb{background:none;border:0;padding:0;color:var(--mut);font:12px inherit;font-family:inherit;text-align:right;text-decoration:underline dotted;cursor:pointer}
+.amt .ytdb{display:block;margin:2px 0 0 auto;font-size:11px}
 .ytds{display:block;font-size:11px;font-weight:400;color:var(--mut);text-align:right}
 .sv{color:var(--sav)}
 .card.green{border-left:4px solid var(--sav)}
@@ -622,37 +623,40 @@ function stubOut(){
   const bil=sum(S.bills.map(x=>x.amount*factor[x.rep])),sav=sum(S.savings.map(savWk));
   const toBills=Math.min(bil,Math.max(netW,0)),savU=Math.min(sav,Math.max(netW-toBills,0)),spend=Math.max(0,netW-toBills-savU);
   const pc=w=>(w/gw*100).toFixed(1)+'% of gross';
-  const wrow=(name,w,col,cls)=>`<div class="item ${cls||''}" style="cursor:default"><span>${col?`<i class="dot" style="background:${col}"></i>`:''}${esc(name)}</span><span class="amt">${fmt(w)}<small class="wy">${fmt(w*52)} a year</small><small class="wy pc">${pc(w)}</small></span></div>`;
-  const list=l=>l.filter(r=>r.v>0).map(r=>wrow(r.name,c.wk(r.v))).join('')||'<div class="empty">None entered.</div>';
+  const stS=c.st,YV=k=>{const v=stS.ytd[k];return v!==undefined&&v!==''?parseFloat(v):null};
+  const yb=(k,v)=>k===null?'':k==='#'?(v==null?'':`<small class="ytds">YTD ${fmt(v)}</small>`):`<button class="ytdb ytdc" onclick="ytdEdit('${k}')" aria-label="Edit year to date">YTD ${v==null?'—':fmt(v)}</button>`;
+  const ysum=l=>{const a=l.map(r=>YV(r.id));return a.some(x=>x!=null)?sum(a.map(x=>x||0)):null};
+  const wrow=(name,w,col,cls,yk,yv)=>`<div class="item ${cls||''}" style="cursor:default"><span>${col?`<i class="dot" style="background:${col}"></i>`:''}${esc(name)}</span><span class="amt">${fmt(w)}<small class="wy">${fmt(w*52)} a year</small><small class="wy pc">${pc(w)}</small>${yk?yb(yk,yv!==undefined?yv:YV(yk)):''}</span></div>`;
+  const list=l=>l.filter(r=>r.v>0).map(r=>wrow(r.name,c.wk(r.v),'','',r.id)).join('')||'<div class="empty">None entered.</div>';
   const warn=netW<bil?`<div class="warn" style="margin:6px 0">Take-home is ${fmt(bil-netW)} a week short of your bills.</div>`:'';
   return pie([[taxW,'var(--mut)'],[dedW,'var(--inc)'],[toBills,'var(--bill)'],[savU,'var(--sav)'],[spend,'var(--spd)']])
-  +`<div class="card" style="padding:2px 16px 4px">${wrow('Gross pay',gw,'var(--ink)','gt gt-iv')}</div>
-  <div class="card"><h2>Taxes</h2>${list(c.tax)}${wrow('Total taxes',taxW,'var(--mut)','tb')}</div>
+  +`<div class="card" style="padding:2px 16px 4px">${wrow('Gross pay',gw,'var(--ink)','gt gt-iv','gross')}</div>
+  <div class="card"><h2>Taxes</h2>${list(c.tax)}${wrow('Total taxes',taxW,'var(--mut)','tb','#',ysum(c.tax))}</div>
   ${taxCheck(c)}
-  <div class="card inc"><h2>Deductions</h2>${list(c.ded)}${wrow('Total deductions',dedW,'var(--inc)','tb')}</div>
-  ${c.m>0?`<div class="card inc"><h2>Retirement</h2>${wrow('Your 401(k)',c.wk(c.ded.filter(r=>r.id==='d3').reduce((a,r)=>a+r.v,0)),'var(--inc)')}${wrow('Company 401(k) match',c.wk(c.m),'var(--sav)')}${wrow('Total into 401(k)',c.wk(c.m+c.ded.filter(r=>r.id==='d3').reduce((a,r)=>a+r.v,0)),'','tb')}</div>`:''}
-  <div class="card green"><h2>Take-home pay</h2>${wrow('Take-home',netW,'','gt gt-sv')}${warn}
+  <div class="card inc"><h2>Deductions</h2>${list(c.ded)}${wrow('Total deductions',dedW,'var(--inc)','tb','#',ysum(c.ded))}</div>
+  ${c.m>0?`<div class="card inc"><h2>Retirement</h2>${wrow('Your 401(k)',c.wk(c.ded.filter(r=>r.id==='d3').reduce((a,r)=>a+r.v,0)),'var(--inc)','','d3')}${wrow('Company 401(k) match',c.wk(c.m),'var(--sav)','','match')}${wrow('Total into 401(k)',c.wk(c.m+c.ded.filter(r=>r.id==='d3').reduce((a,r)=>a+r.v,0)),'','tb','#',(YV('d3')==null&&YV('match')==null)?null:(YV('d3')||0)+(YV('match')||0))}</div>`:''}
+  <div class="card green"><h2>Take-home pay</h2>${wrow('Take-home',netW,'','gt gt-sv','#',(YV('gross')==null)?null:YV('gross')-sum(c.st.items.map(i=>YV(i.id)||0)))}${warn}
   ${wrow('Bills',toBills,'var(--bill)')}${wrow('Savings',savU,'var(--sav)')}${wrow('Spending',spend,'var(--spd)')}</div>`;
 }
 function stubView(){
   const st=stub();
-  const inp=i=>`<div class="row" style="padding:6px 0"><span>${esc(i.name)}</span><span style="display:flex;flex-direction:column;align-items:flex-end;gap:3px"><span style="display:flex;align-items:center;gap:6px">$<input type="number" inputmode="decimal" step="0.01" min="0" value="${esc(i.amount)}" onchange="stubSet('${i.id}',this.value)" aria-label="${esc(i.name)}" style="width:96px;padding:7px 10px;font-size:15px;text-align:right;background:var(--bg)"><button onclick="stubDel('${i.id}')" aria-label="Remove ${esc(i.name)}" style="width:30px;height:30px;border:1px solid var(--ln);border-radius:8px;background:var(--sf);color:var(--mut);font-size:16px;padding:0">×</button></span>${ytdBtn(st,i.id)}</span></div>`;
+  const inp=i=>`<div class="row" style="padding:6px 0"><span>${esc(i.name)}</span><span style="display:flex;flex-direction:column;align-items:flex-end;gap:3px"><span style="display:flex;align-items:center;gap:6px">$<input type="number" inputmode="decimal" step="0.01" min="0" value="${esc(i.amount)}" onchange="stubSet('${i.id}',this.value)" aria-label="${esc(i.name)}" style="width:96px;padding:7px 10px;font-size:15px;text-align:right;background:var(--bg)"><button onclick="stubDel('${i.id}')" aria-label="Remove ${esc(i.name)}" style="width:30px;height:30px;border:1px solid var(--ln);border-radius:8px;background:var(--sf);color:var(--mut);font-size:16px;padding:0">×</button></span></span></div>`;
   const prev=stubFile?`<div style="margin-top:10px">${stubFile.img?`<img src="${stubFile.img}" alt="Your paystub" style="width:100%;max-height:280px;object-fit:contain;border-radius:8px;background:var(--bg)">`:''}<div class="row" style="padding:6px 0 0;border:0"><span>${esc(stubFile.name)}</span><button onclick="stubClear()" style="background:none;border:0;color:var(--spd);text-decoration:underline;font:inherit">Remove</button></div></div>`:'';
   const incName=(S.income.find(x=>x.id===curStub)||{name:'Income'}).name;
   return `<div class="ls"><h1>${esc(incName)} Paystub</h1>
-  <div class="card" style="padding:12px 16px"><button class="add" style="margin:0" onclick="document.getElementById('sf').click()">Upload paystub</button>${prev}<div id="stubStat">${statHtml()}</div><div class="empty" style="padding:8px 0 0">Your paystub is read on your phone and never uploaded or saved. The amounts below are filled in for you, and you can edit any of them.</div><details style="margin-top:6px"><summary style="font-size:13px;color:var(--spd);cursor:pointer">Having trouble? Paste the text instead</summary><textarea id="stp" rows="5" placeholder="Copy the text from your paystub and paste it here" style="width:100%;margin-top:8px;font:12px monospace;padding:10px;border:1px solid var(--ln);border-radius:10px;background:var(--bg);color:var(--ink)"></textarea><button class="add" style="margin:8px 0 0;font-size:14px;padding:10px" onclick="stubPaste()">Fill in from this text</button></details><div style="font-size:11px;color:var(--mut);margin-top:8px">Paystub reader v20</div></div>
+  <div class="card" style="padding:12px 16px"><button class="add" style="margin:0" onclick="document.getElementById('sf').click()">Upload paystub</button>${prev}<div id="stubStat">${statHtml()}</div><div class="empty" style="padding:8px 0 0">Your paystub is read on your phone and never uploaded or saved. The amounts below are filled in for you, and you can edit any of them.</div><details style="margin-top:6px"><summary style="font-size:13px;color:var(--spd);cursor:pointer">Having trouble? Paste the text instead</summary><textarea id="stp" rows="5" placeholder="Copy the text from your paystub and paste it here" style="width:100%;margin-top:8px;font:12px monospace;padding:10px;border:1px solid var(--ln);border-radius:10px;background:var(--bg);color:var(--ink)"></textarea><button class="add" style="margin:8px 0 0;font-size:14px;padding:10px" onclick="stubPaste()">Fill in from this text</button></details><div style="font-size:11px;color:var(--mut);margin-top:8px">Paystub reader v21</div></div>
 <div class="card inc gt-iv" id="stubNet" style="padding:8px 16px">${stubNet()}</div>
   <div id="stubPie">${stubPaycheck()}</div>
   <h1>Weekly and yearly breakdown</h1><div id="stubOut">${stubOut()}</div>
   <button class="add" style="margin:4px 0 0" onclick="stubUse()">Use take-home as this income</button>
   <h1>Edit your amounts</h1>
   <div class="card inc" style="padding:6px 16px 10px"><label for="sp">How often are you paid?</label><select id="sp" onchange="stubPeriod(this.value)">${Object.entries(PERIODS).map(([k,v])=>`<option value="${k}"${st.period===k?' selected':''}>${v.n}</option>`).join('')}</select>
-  <div class="row" style="padding:10px 0 0;border:0"><span>Gross pay per paycheck</span><span style="display:flex;flex-direction:column;align-items:flex-end;gap:3px"><span style="display:flex;align-items:center;gap:6px">$<input type="number" inputmode="decimal" step="0.01" min="0" value="${esc(st.gross)}" onchange="stubGross(this.value)" aria-label="Gross pay" style="width:110px;padding:7px 10px;font-size:15px;text-align:right;background:var(--bg)"></span>${ytdBtn(st,'gross')}</span></div></div>
+  <div class="row" style="padding:10px 0 0;border:0"><span>Gross pay per paycheck</span><span style="display:flex;flex-direction:column;align-items:flex-end;gap:3px"><span style="display:flex;align-items:center;gap:6px">$<input type="number" inputmode="decimal" step="0.01" min="0" value="${esc(st.gross)}" onchange="stubGross(this.value)" aria-label="Gross pay" style="width:110px;padding:7px 10px;font-size:15px;text-align:right;background:var(--bg)"></span></span></div></div>
   
   ${ytdCard(st)}
   <div class="card bill"><h2>Taxes (per paycheck)</h2>${st.items.filter(i=>i.type==='tax').map(inp).join('')}</div>
   <div class="card inc"><h2>Deductions (per paycheck)</h2>${st.items.filter(i=>i.type==='ded').map(inp).join('')}</div>
-  <div class="card" style="padding:6px 16px"><div class="row" style="padding:6px 0;border:0"><span>Company 401(k) match<small class="wy" style="text-align:left">paid by your employer, not taken from your pay</small></span><span style="display:flex;flex-direction:column;align-items:flex-end;gap:3px"><span style="display:flex;align-items:center;gap:6px">$<input type="number" inputmode="decimal" step="0.01" min="0" value="${esc(st.match)}" onchange="stubMatch(this.value)" aria-label="Company 401(k) match" style="width:96px;padding:7px 10px;font-size:15px;text-align:right;background:var(--bg)"></span>${ytdBtn(st,'match')}</span></div></div>
+  <div class="card" style="padding:6px 16px"><div class="row" style="padding:6px 0;border:0"><span>Company 401(k) match<small class="wy" style="text-align:left">paid by your employer, not taken from your pay</small></span><span style="display:flex;flex-direction:column;align-items:flex-end;gap:3px"><span style="display:flex;align-items:center;gap:6px">$<input type="number" inputmode="decimal" step="0.01" min="0" value="${esc(st.match)}" onchange="stubMatch(this.value)" aria-label="Company 401(k) match" style="width:96px;padding:7px 10px;font-size:15px;text-align:right;background:var(--bg)"></span></span></div></div>
   <button class="add" style="margin:0 0 12px;background:var(--sf);color:var(--ink);border:1px solid var(--ln)" onclick="stubAdd()">Add a category</button>
   </div>`;
 }
