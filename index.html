@@ -548,11 +548,11 @@ function ytdDoRecalc(){const st=stub();estimateYtd(st,st.ytdDate);rollYtd(st);sa
 function ytdCard(st){
   return `<div class="card" style="padding:6px 16px 10px"><label for="yd">Year to date as of</label><input id="yd" type="date" value="${esc(st.ytdDate||'')}" onchange="ytdDateSet(this.value)"><button class="add" style="margin:10px 0 6px;font-size:14px;padding:10px" onclick="ytdRecalc()">Recalculate year to date from this date</button><div class="empty" style="padding:2px 0 4px;text-align:left">Year to date runs from January 1 to December 31 and starts over each January. It comes from your paystub when the stub lists year-to-date amounts, and is otherwise figured from your paycheck amounts. Each time you open the app on or after a pay day, your paycheck is added to each total. Pay days are Fridays for weekly and every-two-weeks pay, the 15th and last day for twice a month, and month end for monthly.</div></div>`;
 }
-const ytdBtn=(st,k)=>`<button class="ytdb" onclick="ytdEdit('${k}')" aria-label="Edit year to date">Currently = ${st.ytd[k]!==undefined&&st.ytd[k]!==''?fmt(parseFloat(st.ytd[k])):'—'}</button>`;
+const ytdBtn=(st,k)=>`<button class="ytdb" onclick="ytdEdit('${k}')" aria-label="Edit year to date">Current total = ${st.ytd[k]!==undefined&&st.ytd[k]!==''?fmt(parseFloat(st.ytd[k])):'—'}</button>`;
 function stubNet(){
   const c=stubCalc(),st=c.st,Y=k=>{const v=st.ytd[k];return v!==undefined&&v!==''?parseFloat(v):null};
   const gy=Y('gross'),my=Y('match'),ny=gy!=null?gy-sum(st.items.map(i=>Y(i.id)||0)):null;
-  const val=(b,y)=>`<span style="text-align:right">${b}${y==null?'':`<small class="ytds">Currently = ${fmt(y)}</small>`}</span>`;
+  const val=(b,y)=>`<span style="text-align:right">${b}${y==null?'':`<small class="ytds">Current total = ${fmt(y)}</small>`}</span>`;
   return `<div class="row" style="padding:6px 0"><span>Gross pay per paycheck</span>${val(`<b>${c.g>0?fmt(c.g):'$0.00'}</b>`,gy)}</div><div class="row" style="padding:6px 0;border:0"><span>Net pay per paycheck</span>${val(`<b style="color:var(--sav)">${c.g>0?fmt(c.net):'$0.00'}</b>`,ny)}</div>${c.m>0?`<div class="row" style="padding:6px 0;border:0"><span>Company 401(k) match</span>${val(`<b>${fmt(c.m)}</b>`,my)}</div>`:''}`;
 }
 function stubPaycheck(){
@@ -561,7 +561,7 @@ function stubPaycheck(){
   const YK=k=>{const v=c.st.ytd[k];return v!==undefined&&v!==''?parseFloat(v):null};
   const rows=[...c.tax,...c.ded].filter(r=>r.v>0).map((r,n)=>({name:r.name,v:r.v,col:PCOL[n%PCOL.length],y:YK(r.id)}));
   const net=Math.max(0,c.net);rows.push({name:'Net pay',v:net,col:'var(--sav)',y:YK('gross')==null?null:YK('gross')-sum(c.st.items.map(i=>YK(i.id)||0))});
-  const line=r=>`<div class="item" style="cursor:default"><span><i class="dot" style="background:${r.col}"></i>${esc(r.name)}</span><span class="amt">${fmt(r.v)}${r.y==null?'':`<small class="ytds">Currently = ${fmt(r.y)}</small>`}<small class="wy pc">${(r.v/c.g*100).toFixed(1)}%</small></span></div>`;
+  const line=r=>`<div class="item" style="cursor:default"><span><i class="dot" style="background:${r.col}"></i>${esc(r.name)}</span><span class="amt">${fmt(r.v)}${r.y==null?'':`<small class="ytds">Current total = ${fmt(r.y)}</small>`}<small class="wy pc">${(r.v/c.g*100).toFixed(1)}%</small></span></div>`;
   return `<div class="card" style="padding:2px 16px 8px"><h2>Where each paycheck goes</h2>${pie(rows.map(r=>[r.v,r.col]))}${rows.map(line).join('')}</div>`;
 }
 function refreshStub(){const e=$('stubOut');if(e)e.innerHTML=stubOut();const n=$('stubNet');if(n)n.innerHTML=stubNet();const q=$('stubPie');if(q)q.innerHTML=stubPaycheck()}
@@ -625,7 +625,7 @@ function stubOut(){
   const toBills=Math.min(bil,Math.max(netW,0)),savU=Math.min(sav,Math.max(netW-toBills,0)),spend=Math.max(0,netW-toBills-savU);
   const pc=w=>(w/gw*100).toFixed(1)+'% of gross';
   const stS=c.st,YV=k=>{const v=stS.ytd[k];return v!==undefined&&v!==''?parseFloat(v):null};
-  const yb=(k,v)=>k===null?'':k==='#'?(v==null?'':`<small class="ytds">Currently = ${fmt(v)}</small>`):`<button class="ytdb ytdc" onclick="ytdEdit('${k}')" aria-label="Edit year to date">Currently = ${v==null?'—':fmt(v)}</button>`;
+  const yb=(k,v)=>k===null?'':k==='#'?(v==null?'':`<small class="ytds">Current total = ${fmt(v)}</small>`):`<button class="ytdb ytdc" onclick="ytdEdit('${k}')" aria-label="Edit year to date">Current total = ${v==null?'—':fmt(v)}</button>`;
   const ysum=l=>{const a=l.map(r=>YV(r.id));return a.some(x=>x!=null)?sum(a.map(x=>x||0)):null};
   const wrow=(name,w,col,cls,yk,yv)=>`<div class="item ${cls||''}" style="cursor:default"><span>${col?`<i class="dot" style="background:${col}"></i>`:''}${esc(name)}</span><span class="amt">${fmt(w)}<small class="wy">Yearly = ${fmt(w*52)}</small>${yk?yb(yk,yv!==undefined?yv:YV(yk)):''}<small class="wy pc">${pc(w)}</small></span></div>`;
   const list=l=>l.filter(r=>r.v>0).map(r=>wrow(r.name,c.wk(r.v),'','',r.id)).join('')||'<div class="empty">None entered.</div>';
@@ -645,7 +645,7 @@ function stubView(){
   const prev=stubFile?`<div style="margin-top:10px">${stubFile.img?`<img src="${stubFile.img}" alt="Your paystub" style="width:100%;max-height:280px;object-fit:contain;border-radius:8px;background:var(--bg)">`:''}<div class="row" style="padding:6px 0 0;border:0"><span>${esc(stubFile.name)}</span><button onclick="stubClear()" style="background:none;border:0;color:var(--spd);text-decoration:underline;font:inherit">Remove</button></div></div>`:'';
   const incName=(S.income.find(x=>x.id===curStub)||{name:'Income'}).name;
   return `<div class="ls"><h1>${esc(incName)} Paystub</h1>
-  <div class="card" style="padding:12px 16px"><button class="add" style="margin:0" onclick="document.getElementById('sf').click()">Upload paystub</button>${prev}<div id="stubStat">${statHtml()}</div><div class="empty" style="padding:8px 0 0">Your paystub is read on your phone and never uploaded or saved. The amounts below are filled in for you, and you can edit any of them.</div><details style="margin-top:6px"><summary style="font-size:13px;color:var(--spd);cursor:pointer">Having trouble? Paste the text instead</summary><textarea id="stp" rows="5" placeholder="Copy the text from your paystub and paste it here" style="width:100%;margin-top:8px;font:12px monospace;padding:10px;border:1px solid var(--ln);border-radius:10px;background:var(--bg);color:var(--ink)"></textarea><button class="add" style="margin:8px 0 0;font-size:14px;padding:10px" onclick="stubPaste()">Fill in from this text</button></details><div style="font-size:11px;color:var(--mut);margin-top:8px">Paystub reader v25</div></div>
+  <div class="card" style="padding:12px 16px"><button class="add" style="margin:0" onclick="document.getElementById('sf').click()">Upload paystub</button>${prev}<div id="stubStat">${statHtml()}</div><div class="empty" style="padding:8px 0 0">Your paystub is read on your phone and never uploaded or saved. The amounts below are filled in for you, and you can edit any of them.</div><details style="margin-top:6px"><summary style="font-size:13px;color:var(--spd);cursor:pointer">Having trouble? Paste the text instead</summary><textarea id="stp" rows="5" placeholder="Copy the text from your paystub and paste it here" style="width:100%;margin-top:8px;font:12px monospace;padding:10px;border:1px solid var(--ln);border-radius:10px;background:var(--bg);color:var(--ink)"></textarea><button class="add" style="margin:8px 0 0;font-size:14px;padding:10px" onclick="stubPaste()">Fill in from this text</button></details><div style="font-size:11px;color:var(--mut);margin-top:8px">Paystub reader v26</div></div>
 <div class="card inc gt-iv" id="stubNet" style="padding:8px 16px">${stubNet()}</div>
   <div id="stubPie">${stubPaycheck()}</div>
   <h1>Weekly and yearly breakdown</h1><div id="stubOut">${stubOut()}</div>
