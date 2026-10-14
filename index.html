@@ -261,16 +261,36 @@ function setStat(k,t){stubStat={k,t};const e=$('stubStat');if(e)e.innerHTML=stat
 const libs={};
 function loadScript(src){return libs[src]||(libs[src]=new Promise((res,rej)=>{const e=document.createElement('script');e.src=src;e.onload=res;e.onerror=()=>{delete libs[src];rej(new Error('load'))};document.head.appendChild(e)}))}
 const PDFJS='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js',PDFJS_W='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js',TESS='https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
-const MONEY=/\(?-?\$?\s?\d{1,3}(?:,\d{3})+\.\d{2}\)?|\(?-?\$?\s?\d+\.\d{2}\)?/g;
+const MONEY=/\(?-?\$?\s?\d{1,3}(?:,\d{3})+\.\d{2}(?!\d)\)?|\(?-?\$?\s?\d+\.\d{2}(?!\d)\)?/g;
 const moneyOf=m=>Math.abs(parseFloat(m.replace(/[^\d.]/g,'')));
-const TAX_RE=/federal|\bfed\b|\bfit\b|\bstate\b|\bsit\b|social\s*security|soc\s*sec|oasdi|fica|medicare|\blocal\b|\bcity\b|county|\bsdi\b|\bsui\b|\bfli\b|pfml|income tax|occupational|head tax|school/i;
-const DED_RE=/health|medical|dental|vision|401|403|roth|retire|pension|\bhsa\b|\bfsa\b|life|disab|\bstd\b|\bltd\b|union|dues|garnish|child support|insurance|ad&d|accident|critical|legal|parking|transit|commuter|loan|savings|espp|charity|united way|\bsupp/i;
-const EARN_RE=/regular|overtime|\bot\b|holiday|vacation|\bpto\b|bonus|salary|hourly|sick|earnings|wages|commission|reimburs|per diem|stipend/i;
-const HEAD_RE=/^(employee )?(taxes|tax withholdings?|withholdings?|statutory.*|deductions?|pre-?tax deductions?|post-?tax deductions?|before-?tax deductions?|after-?tax deductions?|benefits?( & deductions?)?|earnings|employer.*|net pay.*|direct deposit.*|summary.*)$/;
-const niceName=n=>n.toLowerCase().split(' ').filter(Boolean).map(w=>w.length<=2&&/^[a-z]+$/.test(w)?w.toUpperCase():/^(fica|oasdi|sdi|sui|hsa|fsa|fli|pfml|401\(?k\)?|403\(?b\)?|ad&d|std|ltd)$/.test(w)?w.toUpperCase():w[0].toUpperCase()+w.slice(1)).join(' ');
-function parseStub(lines){
-  const L=lines.map(x=>x.replace(/\s+/g,' ').trim()).filter(Boolean);
-  const out={period:null,gross:null,net:null,items:[]},all=L.join('\n').toLowerCase();
+const TAX_RE=/federal|\bfed\b|\bfit\b|\bstate\b|\bsit\b|social\s*security|soc\s*sec|oasdi|fica|medicare|\blocal\b|\bcity\b|county|\bsdi\b|\bsui\b|\bfli\b|pfml|income tax|occupational|head tax|school|withhold/i;
+const DED_RE=/health|hlth|medical|dental|vision|401|403|roth|retire|pension|\bhsa\b|\bfsa\b|life|disab|\bstd\b|\bltd\b|union|dues|garnish|child support|insurance|\bins\b|ad&d|accident|critical|legal|parking|transit|commuter|loan|savings|espp|charity|united way|\bsupp/i;
+const EARN_RE=/regular|overtime|\bot\b|holiday|vacation|\bpto\b|bonus|salary|hourly|sick|earnings|wages|commission|reimburs|per diem|stipend|mileage|meals/i;
+const HEAD_RE=/^(employee )?(taxes|tax withholdings?|withholdings?|statutory.*|deductions?|(pre|post|before|after)-?tax deductions?|benefits?( & deductions?)?|earnings|company[- ]?paid.*|employer.*|leave codes?.*|net pay.*|direct deposit.*|summary.*|important messages?)$/;
+const niceName=n=>n.toLowerCase().split(' ').filter(Boolean).map(w=>w.length<=2&&/^[a-z]+$/.test(w)?w.toUpperCase():/^(fica|oasdi|sdi|sui|hsa|fsa|fli|pfml|401\(?k\)?|403\(?b\)?|ad&d|std|ltd)$/.test(w)||/&/.test(w)?w.toUpperCase():w[0].toUpperCase()+w.slice(1)).join(' ');
+const cellsOf=line=>{const o=[],re=/\S+(?: \S+)*/g;let m;while((m=re.exec(line)))o.push({x:m.index*6,s:m[0],ix:true});return o};
+function toks(c){
+  const out=[],str=c.s;let last=0;const ox=i=>c.x+(c.ix?i*6:0);
+  str.replace(MONEY,(m,i)=>{const pre=str.slice(last,i).trim();if(pre)out.push({k:'w',s:pre,x:ox(last)});out.push({k:'m',v:moneyOf(m),x:ox(i)});last=i+m.length;return m});
+  const post=str.slice(last).trim();if(post)out.push({k:'w',s:post,x:ox(last)});
+  return out;
+}
+function groupsOf(cells){
+  const t=[];[...cells].sort((a,b)=>a.x-b.x).forEach(c=>toks(c).forEach(k=>t.push(k)));
+  const g=[];let cur=null;
+  t.forEach(k=>{
+    if(k.k==='w'){if(/^[\d.,:\/\-$%]+$/.test(k.s))return;cur={label:k.s,x:k.x,am:[]};g.push(cur)}
+    else{if(!cur){cur={label:'',x:k.x,am:[]};g.push(cur)}cur.am.push(k.v)}
+  });
+  return g;
+}
+const cleanLabel=l=>l.toLowerCase().replace(/\b(current|ytd|year to date|this pay period|this period|amount|description|hours|hrs\/units|rate|type)\b/g,' ').replace(/[:|$]/g,' ').replace(/\s+/g,' ').trim();
+const secOf=l=>/company|employer|leave|net pay|direct|summary|important/.test(l)?'end':/tax|withhold|statutory/.test(l)?'tax':/deduct|benefit/.test(l)?'ded':/earn/.test(l)?'earn':'end';
+function setHead(heads,x,sec,tol){const h=heads.find(q=>Math.abs(q.x-x)<tol);if(h)h.sec=sec;else heads.push({x,sec})}
+function parseStub(lines){return parseRows(lines.map(cellsOf))}
+function parseRows(rows){
+  const out={period:null,gross:null,net:null,items:[]};
+  const text=rows.map(r=>r.map(c=>c.s).join('  ')),all=text.join('\n').toLowerCase();
   if(/semi[- ]?monthly|twice a month/.test(all))out.period='semi';
   else if(/bi[- ]?weekly|every (two|2) weeks/.test(all))out.period='biweekly';
   else if(/\bweekly\b/.test(all))out.period='week';
@@ -278,27 +298,37 @@ function parseStub(lines){
   if(!out.period){
     const m=all.match(/(\d{1,2})[\/-](\d{1,2})[\/-](\d{2,4})\s*(?:-|–|to|thru|through)\s*(\d{1,2})[\/-](\d{1,2})[\/-](\d{2,4})/);
     if(m){const yy=v=>+v<100?2000+ +v:+v,d1=new Date(yy(m[3]),m[1]-1,m[2]),d2=new Date(yy(m[6]),m[4]-1,m[5]),n=Math.round((d2-d1)/864e5);
-      out.period=n>=0&&n<=8?'week':n>=12&&n<=13?'biweekly':n>=14&&n<=15?'semi':n>=27&&n<=31?'month':null;
-      if(n===13)out.period='biweekly'}
+      out.period=n>=0&&n<=8?'week':n>=12&&n<=13?'biweekly':n>=14&&n<=15?'semi':n>=27&&n<=31?'month':null}
   }
-  const first=(re)=>{for(const l of L){if(re.test(l.toLowerCase())){const a=(l.match(MONEY)||[]).map(moneyOf);if(a.length&&a[0]>0)return a[0]}}return null};
-  out.gross=first(/gross\s*(pay|earnings|wages)/)||first(/total\s*(gross|earnings)/)||first(/total\s*pay/)||first(/\bgross\b/);
-  out.net=first(/net\s*pay(?!.*distribution)|take[- ]home|net\s*amount/);
-  let sec='';
-  L.forEach(l=>{
-    const am=(l.match(MONEY)||[]).map(moneyOf);
-    const label=l.replace(MONEY,' ').replace(/[$|:]/g,' ').replace(/\b(current|ytd|year to date|this period|amount|description|hours|rate|type)\b/gi,' ').replace(/\s+/g,' ').trim().toLowerCase();
-    if(HEAD_RE.test(label)){sec=/tax|withhold|statutory/.test(label)?'tax':/deduct|benefit/.test(label)?'ded':/earn/.test(label)?'earn':'end';return}
-    if(!am.length||!(am[0]>0)||am[0]>=100000)return;
-    if((label.match(/[a-z]/g)||[]).length<3&&!DED_RE.test(label)&&!TAX_RE.test(label))return;
-    if(/^(total|subtotal|sub total|ytd|gross|net)\b/.test(label)||/\b(total|net pay|gross pay)\b/.test(label))return;
-    if(sec==='end'||sec==='earn')return;
-    let type=null;
-    if(EARN_RE.test(label)&&!TAX_RE.test(label)&&!DED_RE.test(label))return;
-    if(TAX_RE.test(label))type='tax';else if(DED_RE.test(label))type='ded';else if(sec==='tax'||sec==='ded')type=sec;
-    if(!type)return;
-    out.items.push({name:niceName(label.replace(/[^a-z0-9&()\/ -]/g,' ').replace(/\s+/g,' ').trim()).slice(0,60),amount:am[0],type});
+  const pageW=Math.max(1,...rows.flat().map(c=>c.x)),tol=Math.max(25,pageW*0.04);
+  const heads=[];let sumNext=false,done=false,earnSum=0,earnSeen=false,lastHeads=[];
+  rows.forEach((cells,ri)=>{
+    const g=groupsOf(cells),joined=text[ri].toLowerCase();
+    if(done)return;
+    const dx=cells.filter(c=>/^description$/i.test(c.s.trim())).map(c=>c.x).sort((a,b)=>a-b);
+    if(dx.length>=2&&dx.length===lastHeads.length){lastHeads.sort((a,b)=>a.x-b.x).forEach((h,i)=>{h.x=dx[i]-4;h.al=true});lastHeads=[];return}
+    if(sumNext){sumNext=false;done=true;const a=g.flatMap(q=>q.am);if(a.length>=3){out.gross=a[0];out.net=a[2]}return}
+    if(/earnings/.test(joined)&&/deductions/.test(joined)&&/net pay/.test(joined)){sumNext=true;return}
+    g.forEach(q=>{
+      const lab=cleanLabel(q.label);
+      if(HEAD_RE.test(lab)){setHead(heads,q.x,secOf(lab),tol);const hh=heads.find(z=>Math.abs(z.x-q.x)<tol);if(hh&&!lastHeads.includes(hh)&&!hh.al)lastHeads.push(hh);return}
+      if(!q.am.length)return;
+      const h=heads.filter(x=>x.x<=q.x+(x.al?4:tol)).sort((a,b)=>b.x-a.x)[0],sec=h?h.sec:'';
+      if(sec==='earn'){earnSum+=q.am.length>=4?q.am[2]:q.am[0];earnSeen=true;return}
+      if(sec==='end')return;
+      if(!(q.am[0]>0)||q.am[0]>=100000)return;
+      if((lab.match(/[a-z]/g)||[]).length<3&&!DED_RE.test(lab)&&!TAX_RE.test(lab))return;
+      if(/^(total|subtotal|sub total|ytd|gross|net)\b/.test(lab)||/\b(total|net pay|gross pay)\b/.test(lab))return;
+      let type=null;
+      if(!sec&&EARN_RE.test(lab)&&!TAX_RE.test(lab)&&!DED_RE.test(lab))return;
+      if(TAX_RE.test(lab))type='tax';else if(DED_RE.test(lab))type='ded';else if(sec==='tax'||sec==='ded')type=sec;
+      if(!type)return;
+      out.items.push({name:niceName(lab.replace(/[^a-z0-9&()\/ -]/g,' ').replace(/\s+/g,' ').trim()).slice(0,60),amount:q.am[0],type});
+    });
   });
+  const first=re=>{for(const l of text){if(re.test(l.toLowerCase())){const a=(l.match(MONEY)||[]).map(moneyOf);if(a.length&&a[0]>0)return a[0]}}return null};
+  if(!out.gross)out.gross=first(/gross\s*(pay|earnings|wages)/)||first(/total\s*(gross|earnings)/)||first(/total\s*pay/)||first(/\bgross\b/)||(earnSeen&&earnSum>0?Math.round(earnSum*100)/100:null);
+  if(!out.net)out.net=first(/total current net|net\s*pay(?!.*distribution)|take[- ]home|net\s*amount/);
   return out;
 }
 function defKey(n,type){
@@ -308,10 +338,10 @@ function defKey(n,type){
     if(/social\s*security|soc\s*sec|oasdi|^fica$|fica\s*ss/.test(s))return 't3';
     if(/medicare/.test(s))return 't4';
     if(/federal|\bfed\b|\bfit\b|\bfwt\b/.test(s))return 't1';
-    if(/\bstate\b|\bst\b|\bsit\b/.test(s))return 't2';
+    if(/\bstate\b|\bst\b|\bsit\b|^[a-z]{2} (withhold|income|tax)/.test(s))return 't2';
     return null;
   }
-  if(/health|medical/.test(s))return 'd1';
+  if(/health|hlth|medical/.test(s))return 'd1';
   if(/dental|vision/.test(s))return 'd2';
   if(/401|403|roth|retire|pension/.test(s))return 'd3';
   return null;
@@ -331,42 +361,57 @@ function applyStub(p){
   st.items=st.items.concat(extra);
   S.stub=st;save();
 }
-async function ocrLines(src){
+async function ocrRows(src){
   await loadScript(TESS);
   const r=await Tesseract.recognize(src,'eng',{logger:m=>{if(m.status==='recognizing text')setStat('busy','Reading your paystub… '+Math.round(m.progress*100)+'%')}});
-  return r.data.text.split('\n');
+  const out=[];
+  (r.data.lines||[]).forEach(ln=>{
+    const w=(ln.words||[]).filter(x=>x.text&&x.text.trim()&&x.bbox).sort((a,b)=>a.bbox.x0-b.bbox.x0),cells=[];
+    w.forEach(x=>{const last=cells[cells.length-1],h=Math.max(8,x.bbox.y1-x.bbox.y0);if(last&&x.bbox.x0-last.x1<h*1.3){last.s+=' '+x.text;last.x1=x.bbox.x1}else cells.push({x:x.bbox.x0,x1:x.bbox.x1,s:x.text})});
+    if(cells.length)out.push(cells);
+  });
+  if(out.length)return out;
+  return (r.data.text||'').split('\n').filter(l=>l.trim()).map(cellsOf);
 }
-async function pdfLines(file){
+async function pdfRows(file){
   await loadScript(PDFJS);
-  const lib=window.pdfjsLib;lib.GlobalWorkerOptions.workerSrc=PDFJS_W;
+  const lib=window.pdfjsLib;if(!lib)throw new Error('pdfjs');
+  lib.GlobalWorkerOptions.workerSrc=PDFJS_W;
   const doc=await lib.getDocument({data:await file.arrayBuffer()}).promise;
-  let lines=[];
+  let rows=[],chars=0;
   for(let n=1;n<=Math.min(doc.numPages,3);n++){
-    const tc=await (await doc.getPage(n)).getTextContent(),rows=[];
-    tc.items.forEach(it=>{if(!it.str||!it.str.trim())return;const y=it.transform[5],x=it.transform[4];let r=rows.find(q=>Math.abs(q.y-y)<3);if(!r){r={y,c:[]};rows.push(r)}r.c.push({x,s:it.str})});
-    rows.sort((a,b)=>b.y-a.y).forEach(r=>{r.c.sort((a,b)=>a.x-b.x);lines.push(r.c.map(c=>c.s).join('  '))});
+    const tc=await (await doc.getPage(n)).getTextContent(),rs=[];
+    tc.items.forEach(it=>{if(!it.str||!it.str.trim())return;const y=it.transform[5],x=it.transform[4];let r=rs.find(q=>Math.abs(q.y-y)<3);if(!r){r={y,c:[]};rs.push(r)}r.c.push({x,s:it.str});chars+=it.str.length});
+    rs.sort((a,b)=>b.y-a.y).forEach(r=>rows.push(r.c));
   }
-  if(lines.join('').length<40){
+  if(chars<40){
     const page=await doc.getPage(1),vp=page.getViewport({scale:2}),cv=document.createElement('canvas');
     cv.width=vp.width;cv.height=vp.height;await page.render({canvasContext:cv.getContext('2d'),viewport:vp}).promise;
-    stubFile.img=cv.toDataURL('image/jpeg',0.7);lines=await ocrLines(cv);
+    stubFile.img=cv.toDataURL('image/jpeg',0.7);rows=await ocrRows(cv);
   }
-  return lines;
+  return rows;
+}
+function finishStub(p,src){
+  if(!(p.gross>0)&&!p.items.length){stubStat={k:'err',t:'I read the file but could not find pay amounts in it. Use the paste box below, or type the amounts in.'};render();return}
+  applyStub(p);
+  const c=stubCalc();let k='ok',t=src+' Check the amounts and edit anything that looks off.';
+  if(p.net>0){
+    if(Math.abs(c.net-p.net)<=1)t=src+' The take-home matches your stub ('+fmt(p.net)+'). Edit anything that looks off.';
+    else{k='warn';t=src+' The take-home from these numbers is '+fmt(c.net)+' but your stub says '+fmt(p.net)+'. Something may be missing or misread, so check the amounts and edit them.'}
+  }
+  stubStat={k,t};render();
 }
 async function stubRead(file,isPdf){
   setStat('busy','Reading your paystub…');
-  let lines;
-  try{lines=isPdf?await pdfLines(file):await ocrLines(stubFile.cv)}
-  catch(e){stubStat={k:'err',t:'Could not read this file automatically. Check your connection, or type the amounts in below.'};render();return}
-  const p=parseStub(lines);
-  if(!(p.gross>0)&&!p.items.length){stubStat={k:'err',t:'I could not find pay amounts in this file. A clearer photo or a PDF works best, or type the amounts in below.'};render();return}
-  applyStub(p);
-  const c=stubCalc();let k='ok',t='Filled in from your paystub. Check the amounts and edit anything that looks off.';
-  if(p.net>0){
-    if(Math.abs(c.net-p.net)<=1)t='Filled in from your paystub, and the take-home matches your stub ('+fmt(p.net)+'). Edit anything that looks off.';
-    else{k='warn';t='Filled in from your paystub, but the take-home from these numbers is '+fmt(c.net)+' and your stub says '+fmt(p.net)+'. Something may be missing or misread, so check the amounts and edit them.'}
-  }
-  stubStat={k,t};render();
+  let rows;
+  try{rows=isPdf?await pdfRows(file):await ocrRows(stubFile.cv)}
+  catch(e){stubStat={k:'err',t:(e&&e.message==='load'?'The reader could not be downloaded, so check your internet connection and try again. ':'This file could not be read. ')+'You can use the paste box below or type the amounts in.'};render();return}
+  finishStub(parseRows(rows),'Filled in from your paystub.');
+}
+function stubPaste(){
+  const t=($('stp')||{}).value||'';
+  if(!t.trim()){setStat('err','Paste the text from your paystub first.');return}
+  finishStub(parseStub(t.split('\n')),'Filled in from the text you pasted.');
 }
 function stubPick(inp){
   const f=inp.files&&inp.files[0];inp.value='';
@@ -419,7 +464,7 @@ function stubView(){
   const inp=i=>`<div class="row" style="padding:6px 0"><span>${esc(i.name)}</span><span style="display:flex;align-items:center;gap:6px">$<input type="number" inputmode="decimal" step="0.01" min="0" value="${esc(i.amount)}" onchange="stubSet('${i.id}',this.value)" aria-label="${esc(i.name)}" style="width:96px;padding:7px 10px;font-size:15px;text-align:right;background:var(--bg)"><button onclick="stubDel('${i.id}')" aria-label="Remove ${esc(i.name)}" style="width:30px;height:30px;border:1px solid var(--ln);border-radius:8px;background:var(--sf);color:var(--mut);font-size:16px;padding:0">×</button></span></div>`;
   const prev=stubFile?`<div style="margin-top:10px">${stubFile.img?`<img src="${stubFile.img}" alt="Your paystub" style="width:100%;max-height:280px;object-fit:contain;border-radius:8px;background:var(--bg)">`:''}<div class="row" style="padding:6px 0 0;border:0"><span>${esc(stubFile.name)}</span><button onclick="stubClear()" style="background:none;border:0;color:var(--spd);text-decoration:underline;font:inherit">Remove</button></div></div>`:'';
   return `<div class="ls"><h1>Paystub</h1>
-  <div class="card" style="padding:12px 16px"><button class="add" style="margin:0" onclick="document.getElementById('sf').click()">Upload paystub</button>${prev}<div id="stubStat">${statHtml()}</div><div class="empty" style="padding:8px 0 0">Your paystub is read on your phone and never uploaded or saved. The amounts below are filled in for you, and you can edit any of them.</div></div>
+  <div class="card" style="padding:12px 16px"><button class="add" style="margin:0" onclick="document.getElementById('sf').click()">Upload paystub</button>${prev}<div id="stubStat">${statHtml()}</div><div class="empty" style="padding:8px 0 0">Your paystub is read on your phone and never uploaded or saved. The amounts below are filled in for you, and you can edit any of them.</div><details style="margin-top:6px"><summary style="font-size:13px;color:var(--spd);cursor:pointer">Having trouble? Paste the text instead</summary><textarea id="stp" rows="5" placeholder="Copy the text from your paystub and paste it here" style="width:100%;margin-top:8px;font:12px monospace;padding:10px;border:1px solid var(--ln);border-radius:10px;background:var(--bg);color:var(--ink)"></textarea><button class="add" style="margin:8px 0 0;font-size:14px;padding:10px" onclick="stubPaste()">Fill in from this text</button></details><div style="font-size:11px;color:var(--mut);margin-top:8px">Paystub reader v9</div></div>
   <div class="card inc" style="padding:6px 16px 10px"><label for="sp">How often are you paid?</label><select id="sp" onchange="stubPeriod(this.value)">${Object.entries(PERIODS).map(([k,v])=>`<option value="${k}"${st.period===k?' selected':''}>${v.n}</option>`).join('')}</select>
   <div class="row" style="padding:10px 0 0;border:0"><span>Gross pay per paycheck</span><span style="display:flex;align-items:center;gap:6px">$<input type="number" inputmode="decimal" step="0.01" min="0" value="${esc(st.gross)}" onchange="stubGross(this.value)" aria-label="Gross pay" style="width:110px;padding:7px 10px;font-size:15px;text-align:right;background:var(--bg)"></span></div></div>
   <div class="card bill"><h2>Taxes (per paycheck)</h2>${st.items.filter(i=>i.type==='tax').map(inp).join('')}</div>
