@@ -90,6 +90,8 @@ h1{font-size:15px;font-weight:600;color:var(--mut);margin:0 0 12px}
 .dl{margin:4px 0 0;padding-left:16px;list-style:disc;font-weight:400;color:var(--mut);font-size:13px}
 .dl li{margin:2px 0}
 .ls .dl{font-size:12px}
+.ytdb{background:none;border:0;padding:0;color:var(--mut);font:12px inherit;font-family:inherit;text-align:right;text-decoration:underline dotted;cursor:pointer}
+.ytds{display:block;font-size:11px;font-weight:400;color:var(--mut);text-align:right}
 .sv{color:var(--sav)}
 .card.green{border-left:4px solid var(--sav)}
 .card.green h2{color:var(--sav)}
@@ -246,7 +248,7 @@ function goalCard(m){
   <div class="row" style="padding:2px 0;border:0"><span>${met?'Ahead of goal':'Short of goal'}</span><b style="color:${met?'var(--sav)':'var(--bill)'}">${pts} points${met?'':' · '+fmt(m.gap)+' a week'}</b></div></div>`;
 }
 const PERIODS={week:{n:'Every week',y:52},biweekly:{n:'Every 2 weeks',y:26},semi:{n:'Twice a month',y:24},month:{n:'Once a month',y:12}};
-function stubDefaults(){const t=(id,name,type)=>({id,name,amount:'',type});return{period:'biweekly',gross:'',match:'',tgtF:'',tgtS:'',fs:'s',stRate:'',items:[t('t1','Federal income tax','tax'),t('t2','State income tax','tax'),t('t3','Social Security','tax'),t('t4','Medicare','tax'),t('d1','Health insurance','ded'),t('d3','401(k)','ded'),t('d4','Other deductions','ded')]}}
+function stubDefaults(){const t=(id,name,type)=>({id,name,amount:'',type});return{period:'biweekly',gross:'',match:'',tgtF:'',tgtS:'',fs:'s',stRate:'',ytd:{},ytdDate:'',items:[t('t1','Federal income tax','tax'),t('t2','State income tax','tax'),t('t3','Social Security','tax'),t('t4','Medicare','tax'),t('d1','Health insurance','ded'),t('d3','401(k)','ded'),t('d4','Other deductions','ded')]}}
 let curStub=null;
 const hasStubData=x=>!!(x&&Array.isArray(x.items)&&(parseFloat(x.gross)>0||x.items.some(i=>parseFloat(i.amount)>0)));
 function ensureStub(id){
@@ -262,16 +264,72 @@ function migrateStubs(){
     const t=S.income.find(x=>x.id===PC)||S.income[0];
     t.stub=true;ensureStub(t.id);
   }
-  save();
+  rollAllStubs();save();
 }
 function stub(){
   if(!curStub)return stubDefaults();
-  ensureStub(curStub);return S.stubs[curStub];
+  ensureStub(curStub);const x=S.stubs[curStub];
+  if(!x.ytd||typeof x.ytd!=='object')x.ytd={};
+  if(typeof x.ytdDate!=='string')x.ytdDate='';
+  return x;
+}
+const r2s=n=>String(Math.round(n*100)/100);
+const ytdKeys=st=>['gross','match'].concat(st.items.map(i=>i.id));
+const amtOf=(st,k)=>parseFloat(k==='gross'?st.gross:k==='match'?st.match:(st.items.find(i=>i.id===k)||{}).amount)||0;
+function paydayCount(iso,period){
+  const a=D(iso),dd=days(a,new Date(a.getFullYear(),0,1));
+  if(period==='week')return Math.floor(dd/7)+1;
+  if(period==='biweekly')return Math.floor(dd/14)+1;
+  if(period==='semi')return 2*a.getMonth()+(a.getDate()>15?2:1);
+  return a.getMonth()+1;
+}
+function paydaysBetween(d,today,period){
+  const f=[],out=[],last=y=>new Date(y.getFullYear(),y.getMonth()+1,0).getDate()===y.getDate();
+  let x=new Date(d.getFullYear(),d.getMonth(),d.getDate()+1),n=0;
+  for(;x<=today&&n<800;x=new Date(x.getFullYear(),x.getMonth(),x.getDate()+1),n++){
+    if(period==='week'||period==='biweekly'){if(x.getDay()===5)f.push(x)}
+    else if(period==='semi'){if(x.getDate()===15||last(x))out.push(x)}
+    else if(last(x))out.push(x);
+  }
+  if(period==='week')return f;
+  if(period==='biweekly'){const par=d.getDay()===5?1:0;return f.filter((_,i)=>i%2===par)}
+  return out;
+}
+function estimateYtd(st,asOf){
+  const n=paydayCount(asOf,st.period);st.ytd={};
+  ytdKeys(st).forEach(k=>{const a=amtOf(st,k);if(a>0)st.ytd[k]=r2s(a*n)});
+  st.ytdDate=asOf;
+}
+function ytdAuto(st,k){
+  if(!st.ytdDate||(st.ytd[k]!==undefined&&st.ytd[k]!==''))return false;
+  const a=amtOf(st,k);if(!(a>0))return false;
+  st.ytd[k]=r2s(a*paydayCount(st.ytdDate,st.period));return true;
+}
+function rollYtd(st,today){
+  if(!st||!/^\d{4}-\d{2}-\d{2}$/.test(st.ytdDate||''))return false;
+  if(!st.ytd||typeof st.ytd!=='object')st.ytd={};
+  today=today||todayD();
+  const d=D(st.ytdDate);let changed=false;
+  if(d>=today)return false;
+  const zero=()=>{Object.keys(st.ytd).forEach(k=>{st.ytd[k]='0'})};
+  let yr=d.getFullYear();
+  paydaysBetween(d,today,st.period).forEach(p=>{
+    if(p.getFullYear()!==yr){zero();yr=p.getFullYear()}
+    ytdKeys(st).forEach(k=>{if(st.ytd[k]!==undefined&&st.ytd[k]!=='')st.ytd[k]=r2s((parseFloat(st.ytd[k])||0)+amtOf(st,k))});
+    st.ytdDate=iso(p);changed=true;
+  });
+  if(yr<today.getFullYear()){zero();st.ytdDate=(today.getFullYear()-1)+'-12-31';changed=true}
+  return changed;
+}
+function rollAllStubs(){
+  let ch=false;
+  S.income.forEach(i=>{if(i.stub&&S.stubs&&S.stubs[i.id]&&rollYtd(S.stubs[i.id]))ch=true});
+  if(ch)save();return ch;
 }
 function cleanStub(x){
   if(!x||typeof x!=='object'||!Array.isArray(x.items))return null;
   const num=v=>{const n=parseFloat(v);return n>=0?String(n):''};
-  return{period:PERIODS[x.period]?x.period:'biweekly',gross:num(x.gross),match:num(x.match),tgtF:num(x.tgtF),tgtS:num(x.tgtS),fs:FST[x.fs]?x.fs:'s',stRate:num(x.stRate),items:x.items.filter(i=>i&&typeof i==='object').slice(0,40).map((i,n)=>({id:String(i.id||'x'+n).replace(/[^a-z0-9]/gi,'').slice(0,30)||'x'+n,name:String(i.name||'Other').slice(0,60),amount:num(i.amount),type:i.type==='tax'?'tax':'ded'}))};
+  return{period:PERIODS[x.period]?x.period:'biweekly',gross:num(x.gross),match:num(x.match),tgtF:num(x.tgtF),tgtS:num(x.tgtS),fs:FST[x.fs]?x.fs:'s',stRate:num(x.stRate),ytd:(()=>{const o={};if(x.ytd&&typeof x.ytd==='object')Object.keys(x.ytd).slice(0,60).forEach(k=>{const n=parseFloat(x.ytd[k]);if(n>=0)o[String(k).replace(/[^a-z0-9]/gi,'').slice(0,30)]=String(n)});return o})(),ytdDate:/^\d{4}-\d{2}-\d{2}$/.test(x.ytdDate)?x.ytdDate:'',items:x.items.filter(i=>i&&typeof i==='object').slice(0,40).map((i,n)=>({id:String(i.id||'x'+n).replace(/[^a-z0-9]/gi,'').slice(0,30)||'x'+n,name:String(i.name||'Other').slice(0,60),amount:num(i.amount),type:i.type==='tax'?'tax':'ded'}))};
 }
 function stubCalc(){
   const st=stub(),y=PERIODS[st.period].y,g=parseFloat(st.gross)||0,m=parseFloat(st.match)||0;
@@ -313,7 +371,7 @@ const secOf=l=>/company|employer|leave|net pay|direct|summary|important/.test(l)
 function setHead(heads,x,sec,tol){const h=heads.find(q=>Math.abs(q.x-x)<tol);if(h)h.sec=sec;else heads.push({x,sec})}
 function parseStub(lines){return parseRows(lines.map(cellsOf))}
 function parseRows(rows){
-  const out={period:null,gross:null,net:null,match:null,items:[]};
+  const out={period:null,gross:null,net:null,match:null,date:null,grossYtd:null,matchYtd:null,items:[]};
   const text=rows.map(r=>r.map(c=>c.s).join('  ')),all=text.join('\n').toLowerCase();
   if(/semi[- ]?monthly|twice a month/.test(all))out.period='semi';
   else if(/bi[- ]?weekly|every (two|2) weeks/.test(all))out.period='biweekly';
@@ -331,13 +389,13 @@ function parseRows(rows){
     if(done)return;
     const dx=cells.filter(c=>/^description$/i.test(c.s.trim())).map(c=>c.x).sort((a,b)=>a-b);
     if(dx.length>=2&&dx.length===lastHeads.length){lastHeads.sort((a,b)=>a.x-b.x).forEach((h,i)=>{h.x=dx[i]-4;h.al=true});lastHeads=[];return}
-    if(sumNext){sumNext=false;done=true;const a=g.flatMap(q=>q.am);if(a.length>=3){out.gross=a[0];out.net=a[2]}return}
+    if(sumNext){sumNext=false;done=true;const a=g.flatMap(q=>q.am);if(a.length>=3){out.gross=a[0];out.net=a[2];if(a.length>=6&&a[3]>=a[0])out.grossYtd=a[3]}return}
     if(/earnings/.test(joined)&&/deductions/.test(joined)&&/net pay/.test(joined)){sumNext=true;return}
     g.forEach(q=>{
       const lab=cleanLabel(q.label);
       if(HEAD_RE.test(lab)){setHead(heads,q.x,secOf(lab),tol);const hh=heads.find(z=>Math.abs(z.x-q.x)<tol);if(hh&&!lastHeads.includes(hh)&&!hh.al)lastHeads.push(hh);return}
       if(!q.am.length)return;
-      if(/\b(match|matching)\b/.test(lab)&&/401|403|retire|pension|roth|\bsimple\b/.test(lab)){if(q.am[0]>0&&out.match==null)out.match=q.am[0];return}
+      if(/\b(match|matching)\b/.test(lab)&&/401|403|retire|pension|roth|\bsimple\b/.test(lab)){if(q.am[0]>0&&out.match==null){out.match=q.am[0];if(q.am.length>=2&&q.am[1]>=q.am[0])out.matchYtd=q.am[1]}return}
       const h=heads.filter(x=>x.x<=q.x+(x.al?4:tol)).sort((a,b)=>b.x-a.x)[0],sec=h?h.sec:'';
       if(sec==='earn'){earnSum+=q.am.length>=4?q.am[2]:q.am[0];earnSeen=true;return}
       if(sec==='end')return;
@@ -348,12 +406,18 @@ function parseRows(rows){
       if(!sec&&EARN_RE.test(lab)&&!TAX_RE.test(lab)&&!DED_RE.test(lab))return;
       if(TAX_RE.test(lab))type='tax';else if(DED_RE.test(lab))type='ded';else if(sec==='tax'||sec==='ded')type=sec;
       if(!type)return;
-      out.items.push({name:niceName(lab.replace(/[^a-z0-9&()\/ -]/g,' ').replace(/\s+/g,' ').trim()).slice(0,60),amount:q.am[0],type});
+      out.items.push({name:niceName(lab.replace(/[^a-z0-9&()\/ -]/g,' ').replace(/\s+/g,' ').trim()).slice(0,60),amount:q.am[0],type,ytd:(q.am.length>=2&&q.am[1]>=q.am[0])?q.am[1]:null});
     });
   });
   const first=re=>{for(const l of text){if(re.test(l.toLowerCase())){const a=(l.match(MONEY)||[]).map(moneyOf);if(a.length&&a[0]>0)return a[0]}}return null};
   if(!out.gross)out.gross=first(/gross\s*(pay|earnings|wages)/)||first(/total\s*(gross|earnings)/)||first(/total\s*pay/)||first(/\bgross\b/)||(earnSeen&&earnSum>0?Math.round(earnSum*100)/100:null);
   if(!out.net)out.net=first(/total current net|net\s*pay(?!.*distribution)|take[- ]home|net\s*amount/);
+  const secondOf=re=>{for(const l of text){if(re.test(l.toLowerCase())){const a=(l.match(MONEY)||[]).map(moneyOf);if(a.length>=2&&a[0]>0&&a[1]>=a[0])return a[1]}}return null};
+  if(out.grossYtd==null)out.grossYtd=secondOf(/gross\s*(pay|earnings|wages)/)||secondOf(/total\s*(gross|earnings)/);
+  const mdy=(m,d,y)=>{y=+y<100?2000+ +y:+y;return(+m>=1&&+m<=12&&+d>=1&&+d<=31)?y+'-'+String(m).padStart(2,'0')+'-'+String(d).padStart(2,'0'):null};
+  const dm=all.match(/(?:deposit|pay|check|payment)\s*date\W{0,6}(\d{1,2})[\/-](\d{1,2})[\/-](\d{2,4})/);
+  if(dm)out.date=mdy(dm[1],dm[2],dm[3]);
+  else{const rr=all.match(/(\d{1,2})[\/-](\d{1,2})[\/-](\d{2,4})\s*(?:-|–|to|thru|through)\s*(\d{1,2})[\/-](\d{1,2})[\/-](\d{2,4})/);if(rr)out.date=mdy(rr[4],rr[5],rr[6])}
   return out;
 }
 function defKey(n,type){
@@ -372,19 +436,25 @@ function defKey(n,type){
   return null;
 }
 function applyStub(p){
-  const st=stubDefaults(),r2=n=>String(Math.round(n*100)/100);
-  st.period=p.period||stub().period;st.tgtF=stub().tgtF||'';st.tgtS=stub().tgtS||'';st.fs=stub().fs||'s';st.stRate=stub().stRate||'';if(p.items.some(i=>/^ia\b|iowa/i.test(i.name)))st.stRate='3.8';
+  const st=stubDefaults(),r2=n=>String(Math.round(n*100)/100),old=stub();
+  st.period=p.period||old.period;st.tgtF=old.tgtF||'';st.tgtS=old.tgtS||'';st.fs=old.fs||'s';st.stRate=old.stRate||'';if(p.items.some(i=>/^ia\b|iowa/i.test(i.name)))st.stRate='3.8';
   if(p.gross)st.gross=r2(p.gross);
   st.match=p.match>0?r2(p.match):'';
-  const extra=[];
+  const extra=[],ysum={},miss={},addY=(k,it)=>{if(it.ytd==null)miss[k]=true;else ysum[k]=(ysum[k]||0)+it.ytd};
   p.items.forEach(it=>{
     const k=defKey(it.name,it.type)||(it.type==='ded'?'d4':null),d=k&&st.items.find(x=>x.id===k);
-    if(d){d.amount=r2((parseFloat(d.amount)||0)+it.amount);return}
+    if(d){d.amount=r2((parseFloat(d.amount)||0)+it.amount);addY(d.id,it);return}
     const ex=extra.find(x=>x.name.toLowerCase()===it.name.toLowerCase()&&x.type===it.type);
-    if(ex)ex.amount=r2((parseFloat(ex.amount)||0)+it.amount);
-    else extra.push({id:'x'+extra.length+Date.now().toString(36),name:it.name,amount:r2(it.amount),type:it.type});
+    if(ex){ex.amount=r2((parseFloat(ex.amount)||0)+it.amount);addY(ex.id,it)}
+    else{const n={id:'x'+extra.length+Date.now().toString(36),name:it.name,amount:r2(it.amount),type:it.type};extra.push(n);addY(n.id,it)}
   });
   st.items=st.items.concat(extra);
+  const asOf=(p.date&&/^\d{4}-\d{2}-\d{2}$/.test(p.date))?p.date:iso(todayD()),n=paydayCount(asOf,st.period);
+  st.ytdDate=asOf;st.ytd={};
+  st.items.forEach(i=>{const a=parseFloat(i.amount)||0;if(a>0)st.ytd[i.id]=(ysum[i.id]!=null&&!miss[i.id])?r2(ysum[i.id]):r2(a*n)});
+  if(parseFloat(st.gross)>0)st.ytd.gross=p.grossYtd!=null?r2(p.grossYtd):r2(parseFloat(st.gross)*n);
+  if(parseFloat(st.match)>0)st.ytd.match=p.matchYtd!=null?r2(p.matchYtd):r2(parseFloat(st.match)*n);
+  rollYtd(st);
   ensureStub(curStub);S.stubs[curStub]=st;save();
 }
 async function ocrRows(src){
@@ -453,7 +523,37 @@ function stubPick(inp){
 }
 function stubClear(){stubFile=null;stubStat=null;render()}
 const PCOL=['#d9534f','#e8833a','#d9a82b','#8e6bbf','#3a8fb7','#c0568f','#2f9e8f','#7a8896','#5b7fd1','#a0703c'];
-function stubNet(){const c=stubCalc();return `<div class="row" style="padding:6px 0"><span>Gross pay per paycheck</span><b>${c.g>0?fmt(c.g):'$0.00'}</b></div><div class="row" style="padding:6px 0;border:0"><span>Net pay per paycheck</span><b style="color:var(--sav)">${c.g>0?fmt(c.net):'$0.00'}</b></div>${c.m>0?`<div class="row" style="padding:6px 0;border:0"><span>Company 401(k) match</span><b>${fmt(c.m)}</b></div>`:''}`}
+function ytdEdit(k){
+  const st=stub(),nm=k==='gross'?'Gross pay':k==='match'?'Company 401(k) match':(st.items.find(i=>i.id===k)||{name:''}).name;
+  $('sheet').innerHTML=`<h3>Year to date</h3><div style="color:var(--mut);margin-bottom:8px">${esc(nm)}${st.ytdDate?' as of '+short(D(st.ytdDate)):''}</div><label for="ytv">Year to date ($)</label><input id="ytv" type="number" inputmode="decimal" step="0.01" min="0" value="${esc(st.ytd[k]||'')}"><div class="btns"><button onclick="closeForm()">Cancel</button><button class="pri" onclick="ytdSave('${k}')">Save</button></div>`;
+  $('ov').classList.add('show');setTimeout(()=>{const e=$('ytv');if(e)e.focus()},50);
+}
+function ytdSave(k){
+  const n=parseFloat($('ytv').value),st=stub();
+  if(!(n>=0)){$('ytv').style.borderColor='var(--bill)';return}
+  st.ytd[k]=r2s(n);if(!st.ytdDate)st.ytdDate=iso(todayD());
+  save();closeForm();render();
+}
+function ytdDateSet(v){
+  const st=stub();if(!/^\d{4}-\d{2}-\d{2}$/.test(v||''))return;
+  st.ytdDate=v;rollYtd(st);save();render();
+}
+function ytdRecalc(){
+  const st=stub();
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(st.ytdDate||'')){msg('Pick a date first','Choose the date your year-to-date totals should be as of, then recalculate.');return}
+  msg('Recalculate year to date?','This replaces the year-to-date totals with your paycheck amounts multiplied by the pay days from January 1 to '+short(D(st.ytdDate))+'. Any totals you typed in or read from a paystub are replaced.',[['Cancel',''],['Recalculate','ytdDoRecalc()']]);
+}
+function ytdDoRecalc(){const st=stub();estimateYtd(st,st.ytdDate);rollYtd(st);save();render()}
+function ytdCard(st){
+  return `<div class="card" style="padding:6px 16px 10px"><label for="yd">Year to date as of</label><input id="yd" type="date" value="${esc(st.ytdDate||'')}" onchange="ytdDateSet(this.value)"><button class="add" style="margin:10px 0 6px;font-size:14px;padding:10px" onclick="ytdRecalc()">Recalculate year to date from this date</button><div class="empty" style="padding:2px 0 4px;text-align:left">Year to date runs from January 1 to December 31 and starts over each January. It comes from your paystub when the stub lists year-to-date amounts, and is otherwise figured from your paycheck amounts. Each time you open the app on or after a pay day, your paycheck is added to each total. Pay days are Fridays for weekly and every-two-weeks pay, the 15th and last day for twice a month, and month end for monthly.</div></div>`;
+}
+const ytdBtn=(st,k)=>`<button class="ytdb" onclick="ytdEdit('${k}')" aria-label="Edit year to date">YTD ${st.ytd[k]!==undefined&&st.ytd[k]!==''?fmt(parseFloat(st.ytd[k])):'—'}</button>`;
+function stubNet(){
+  const c=stubCalc(),st=c.st,Y=k=>{const v=st.ytd[k];return v!==undefined&&v!==''?parseFloat(v):null};
+  const gy=Y('gross'),my=Y('match'),ny=gy!=null?gy-sum(st.items.map(i=>Y(i.id)||0)):null;
+  const val=(b,y)=>`<span style="text-align:right">${b}${y==null?'':`<small class="ytds">YTD ${fmt(y)}</small>`}</span>`;
+  return `<div class="row" style="padding:6px 0"><span>Gross pay per paycheck</span>${val(`<b>${c.g>0?fmt(c.g):'$0.00'}</b>`,gy)}</div><div class="row" style="padding:6px 0;border:0"><span>Net pay per paycheck</span>${val(`<b style="color:var(--sav)">${c.g>0?fmt(c.net):'$0.00'}</b>`,ny)}</div>${c.m>0?`<div class="row" style="padding:6px 0;border:0"><span>Company 401(k) match</span>${val(`<b>${fmt(c.m)}</b>`,my)}</div>`:''}`;
+}
 function stubPaycheck(){
   const c=stubCalc();
   if(!(c.g>0))return '';
@@ -463,12 +563,12 @@ function stubPaycheck(){
   return `<div class="card" style="padding:2px 16px 8px"><h2>Where each paycheck goes</h2>${pie(rows.map(r=>[r.v,r.col]))}${rows.map(line).join('')}</div>`;
 }
 function refreshStub(){const e=$('stubOut');if(e)e.innerHTML=stubOut();const n=$('stubNet');if(n)n.innerHTML=stubNet();const q=$('stubPie');if(q)q.innerHTML=stubPaycheck()}
-function stubGross(v){stub().gross=v;save();refreshStub()}
+function stubGross(v){const st=stub();st.gross=v;const ch=ytdAuto(st,'gross');save();ch?render():refreshStub()}
 function stubTgt(k,v){stub()[k]=v;save();refreshStub()}
-function stubMatch(v){stub().match=v;save();refreshStub()}
+function stubMatch(v){const st=stub();st.match=v;const ch=ytdAuto(st,'match');save();ch?render():refreshStub()}
 function stubPeriod(v){stub().period=v;save();refreshStub()}
-function stubSet(id,v){const i=stub().items.find(x=>x.id===id);if(i){i.amount=v;save();refreshStub()}}
-function stubDel(id){stub().items=stub().items.filter(x=>x.id!==id);save();render()}
+function stubSet(id,v){const st=stub(),i=st.items.find(x=>x.id===id);if(i){i.amount=v;const ch=ytdAuto(st,id);save();ch?render():refreshStub()}}
+function stubDel(id){const st=stub();st.items=st.items.filter(x=>x.id!==id);delete st.ytd[id];save();render()}
 function stubAdd(){
   $('sheet').innerHTML=`<h3>Add a category</h3><label for="sn">Name</label><input id="sn" placeholder="e.g. Union dues"><label for="st">Type</label><select id="st"><option value="tax">Tax</option><option value="ded" selected>Deduction</option></select><div class="btns"><button onclick="closeForm()">Cancel</button><button class="pri" onclick="stubAddSave()">Add</button></div>`;
   $('ov').classList.add('show');
@@ -536,22 +636,23 @@ function stubOut(){
 }
 function stubView(){
   const st=stub();
-  const inp=i=>`<div class="row" style="padding:6px 0"><span>${esc(i.name)}</span><span style="display:flex;align-items:center;gap:6px">$<input type="number" inputmode="decimal" step="0.01" min="0" value="${esc(i.amount)}" onchange="stubSet('${i.id}',this.value)" aria-label="${esc(i.name)}" style="width:96px;padding:7px 10px;font-size:15px;text-align:right;background:var(--bg)"><button onclick="stubDel('${i.id}')" aria-label="Remove ${esc(i.name)}" style="width:30px;height:30px;border:1px solid var(--ln);border-radius:8px;background:var(--sf);color:var(--mut);font-size:16px;padding:0">×</button></span></div>`;
+  const inp=i=>`<div class="row" style="padding:6px 0"><span>${esc(i.name)}</span><span style="display:flex;flex-direction:column;align-items:flex-end;gap:3px"><span style="display:flex;align-items:center;gap:6px">$<input type="number" inputmode="decimal" step="0.01" min="0" value="${esc(i.amount)}" onchange="stubSet('${i.id}',this.value)" aria-label="${esc(i.name)}" style="width:96px;padding:7px 10px;font-size:15px;text-align:right;background:var(--bg)"><button onclick="stubDel('${i.id}')" aria-label="Remove ${esc(i.name)}" style="width:30px;height:30px;border:1px solid var(--ln);border-radius:8px;background:var(--sf);color:var(--mut);font-size:16px;padding:0">×</button></span>${ytdBtn(st,i.id)}</span></div>`;
   const prev=stubFile?`<div style="margin-top:10px">${stubFile.img?`<img src="${stubFile.img}" alt="Your paystub" style="width:100%;max-height:280px;object-fit:contain;border-radius:8px;background:var(--bg)">`:''}<div class="row" style="padding:6px 0 0;border:0"><span>${esc(stubFile.name)}</span><button onclick="stubClear()" style="background:none;border:0;color:var(--spd);text-decoration:underline;font:inherit">Remove</button></div></div>`:'';
   const incName=(S.income.find(x=>x.id===curStub)||{name:'Income'}).name;
   return `<div class="ls"><h1>${esc(incName)} Paystub</h1>
-  <div class="card" style="padding:12px 16px"><button class="add" style="margin:0" onclick="document.getElementById('sf').click()">Upload paystub</button>${prev}<div id="stubStat">${statHtml()}</div><div class="empty" style="padding:8px 0 0">Your paystub is read on your phone and never uploaded or saved. The amounts below are filled in for you, and you can edit any of them.</div><details style="margin-top:6px"><summary style="font-size:13px;color:var(--spd);cursor:pointer">Having trouble? Paste the text instead</summary><textarea id="stp" rows="5" placeholder="Copy the text from your paystub and paste it here" style="width:100%;margin-top:8px;font:12px monospace;padding:10px;border:1px solid var(--ln);border-radius:10px;background:var(--bg);color:var(--ink)"></textarea><button class="add" style="margin:8px 0 0;font-size:14px;padding:10px" onclick="stubPaste()">Fill in from this text</button></details><div style="font-size:11px;color:var(--mut);margin-top:8px">Paystub reader v19</div></div>
+  <div class="card" style="padding:12px 16px"><button class="add" style="margin:0" onclick="document.getElementById('sf').click()">Upload paystub</button>${prev}<div id="stubStat">${statHtml()}</div><div class="empty" style="padding:8px 0 0">Your paystub is read on your phone and never uploaded or saved. The amounts below are filled in for you, and you can edit any of them.</div><details style="margin-top:6px"><summary style="font-size:13px;color:var(--spd);cursor:pointer">Having trouble? Paste the text instead</summary><textarea id="stp" rows="5" placeholder="Copy the text from your paystub and paste it here" style="width:100%;margin-top:8px;font:12px monospace;padding:10px;border:1px solid var(--ln);border-radius:10px;background:var(--bg);color:var(--ink)"></textarea><button class="add" style="margin:8px 0 0;font-size:14px;padding:10px" onclick="stubPaste()">Fill in from this text</button></details><div style="font-size:11px;color:var(--mut);margin-top:8px">Paystub reader v20</div></div>
 <div class="card inc gt-iv" id="stubNet" style="padding:8px 16px">${stubNet()}</div>
   <div id="stubPie">${stubPaycheck()}</div>
   <h1>Weekly and yearly breakdown</h1><div id="stubOut">${stubOut()}</div>
   <button class="add" style="margin:4px 0 0" onclick="stubUse()">Use take-home as this income</button>
   <h1>Edit your amounts</h1>
   <div class="card inc" style="padding:6px 16px 10px"><label for="sp">How often are you paid?</label><select id="sp" onchange="stubPeriod(this.value)">${Object.entries(PERIODS).map(([k,v])=>`<option value="${k}"${st.period===k?' selected':''}>${v.n}</option>`).join('')}</select>
-  <div class="row" style="padding:10px 0 0;border:0"><span>Gross pay per paycheck</span><span style="display:flex;align-items:center;gap:6px">$<input type="number" inputmode="decimal" step="0.01" min="0" value="${esc(st.gross)}" onchange="stubGross(this.value)" aria-label="Gross pay" style="width:110px;padding:7px 10px;font-size:15px;text-align:right;background:var(--bg)"></span></div></div>
+  <div class="row" style="padding:10px 0 0;border:0"><span>Gross pay per paycheck</span><span style="display:flex;flex-direction:column;align-items:flex-end;gap:3px"><span style="display:flex;align-items:center;gap:6px">$<input type="number" inputmode="decimal" step="0.01" min="0" value="${esc(st.gross)}" onchange="stubGross(this.value)" aria-label="Gross pay" style="width:110px;padding:7px 10px;font-size:15px;text-align:right;background:var(--bg)"></span>${ytdBtn(st,'gross')}</span></div></div>
   
+  ${ytdCard(st)}
   <div class="card bill"><h2>Taxes (per paycheck)</h2>${st.items.filter(i=>i.type==='tax').map(inp).join('')}</div>
   <div class="card inc"><h2>Deductions (per paycheck)</h2>${st.items.filter(i=>i.type==='ded').map(inp).join('')}</div>
-  <div class="card" style="padding:6px 16px"><div class="row" style="padding:6px 0;border:0"><span>Company 401(k) match<small class="wy" style="text-align:left">paid by your employer, not taken from your pay</small></span><span style="display:flex;align-items:center;gap:6px">$<input type="number" inputmode="decimal" step="0.01" min="0" value="${esc(st.match)}" onchange="stubMatch(this.value)" aria-label="Company 401(k) match" style="width:96px;padding:7px 10px;font-size:15px;text-align:right;background:var(--bg)"></span></div></div>
+  <div class="card" style="padding:6px 16px"><div class="row" style="padding:6px 0;border:0"><span>Company 401(k) match<small class="wy" style="text-align:left">paid by your employer, not taken from your pay</small></span><span style="display:flex;flex-direction:column;align-items:flex-end;gap:3px"><span style="display:flex;align-items:center;gap:6px">$<input type="number" inputmode="decimal" step="0.01" min="0" value="${esc(st.match)}" onchange="stubMatch(this.value)" aria-label="Company 401(k) match" style="width:96px;padding:7px 10px;font-size:15px;text-align:right;background:var(--bg)"></span>${ytdBtn(st,'match')}</span></div></div>
   <button class="add" style="margin:0 0 12px;background:var(--sf);color:var(--ink);border:1px solid var(--ln)" onclick="stubAdd()">Add a category</button>
   </div>`;
 }
@@ -682,7 +783,7 @@ function listView(kind,title,addLabel,empty){
 }
 
 function render(){
-  if(tab.indexOf('stub:')===0){const id=tab.slice(5);if(S.income.some(x=>x.id===id&&x.stub)){if(curStub!==id){curStub=id;stubFile=null;stubStat=null}}else tab='week'}
+  if(tab.indexOf('stub:')===0){const id=tab.slice(5);if(S.income.some(x=>x.id===id&&x.stub)){if(curStub!==id){curStub=id;stubFile=null;stubStat=null}ensureStub(id);if(rollYtd(S.stubs[id]))save()}else tab='week'}
   $('app').innerHTML=tab==='week'?weekView():tab==='bills'?listView('bills','Bills','Add a bill','No bills yet. Add rent, utilities, subscriptions.'):tab==='income'?listView('income','Income','Add income','No income yet. Add a paycheck with its pay date.'):tab==='goal'?goalView():tab.indexOf('stub:')===0?stubView():listView('savings','Savings','Add a savings goal','No savings yet. Set an amount to set aside each week or month.');
   const tl=[['week','Weekly'],['bills','Bills'],['income','Income'],['savings','Savings'],['goal','Goal']].concat(S.income.filter(x=>x.stub).map(x=>['stub:'+x.id,x.name+' Paystub']));
   $('tabs').innerHTML=tl.map(([k,t])=>`<button class="${tab===k?'on':''}" onclick="tab='${k}';render();scrollTo(0,0)">${esc(t)}</button>`).join('');
@@ -965,6 +1066,7 @@ const localDl={save:async({filename,data})=>{const blob=new Blob([data]);const a
 try{if(window.claude&&claude.use){claude.use('downloads').then(d=>{if(d){dl=d;hasDl=true;render()}}).catch(()=>{})}else{dl=localDl;hasDl=true}}catch(e){}
 if('serviceWorker' in navigator)window.addEventListener('load',()=>{navigator.serviceWorker.register('sw.js').catch(()=>{})});
 migrateStubs();render();maybeNotify();
+document.addEventListener('visibilitychange',()=>{if(!document.hidden&&rollAllStubs()&&!$('ov').classList.contains('show'))render()});
 </script>
 </body>
 </html>
