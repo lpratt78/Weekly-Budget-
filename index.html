@@ -511,7 +511,7 @@ function stubView(){
   const inp=i=>`<div class="row" style="padding:6px 0"><span>${esc(i.name)}</span><span style="display:flex;align-items:center;gap:6px">$<input type="number" inputmode="decimal" step="0.01" min="0" value="${esc(i.amount)}" onchange="stubSet('${i.id}',this.value)" aria-label="${esc(i.name)}" style="width:96px;padding:7px 10px;font-size:15px;text-align:right;background:var(--bg)"><button onclick="stubDel('${i.id}')" aria-label="Remove ${esc(i.name)}" style="width:30px;height:30px;border:1px solid var(--ln);border-radius:8px;background:var(--sf);color:var(--mut);font-size:16px;padding:0">×</button></span></div>`;
   const prev=stubFile?`<div style="margin-top:10px">${stubFile.img?`<img src="${stubFile.img}" alt="Your paystub" style="width:100%;max-height:280px;object-fit:contain;border-radius:8px;background:var(--bg)">`:''}<div class="row" style="padding:6px 0 0;border:0"><span>${esc(stubFile.name)}</span><button onclick="stubClear()" style="background:none;border:0;color:var(--spd);text-decoration:underline;font:inherit">Remove</button></div></div>`:'';
   return `<div class="ls"><h1>Paystub</h1>
-  <div class="card" style="padding:12px 16px"><button class="add" style="margin:0" onclick="document.getElementById('sf').click()">Upload paystub</button>${prev}<div id="stubStat">${statHtml()}</div><div class="empty" style="padding:8px 0 0">Your paystub is read on your phone and never uploaded or saved. The amounts below are filled in for you, and you can edit any of them.</div><details style="margin-top:6px"><summary style="font-size:13px;color:var(--spd);cursor:pointer">Having trouble? Paste the text instead</summary><textarea id="stp" rows="5" placeholder="Copy the text from your paystub and paste it here" style="width:100%;margin-top:8px;font:12px monospace;padding:10px;border:1px solid var(--ln);border-radius:10px;background:var(--bg);color:var(--ink)"></textarea><button class="add" style="margin:8px 0 0;font-size:14px;padding:10px" onclick="stubPaste()">Fill in from this text</button></details><div style="font-size:11px;color:var(--mut);margin-top:8px">Paystub reader v16</div></div>
+  <div class="card" style="padding:12px 16px"><button class="add" style="margin:0" onclick="document.getElementById('sf').click()">Upload paystub</button>${prev}<div id="stubStat">${statHtml()}</div><div class="empty" style="padding:8px 0 0">Your paystub is read on your phone and never uploaded or saved. The amounts below are filled in for you, and you can edit any of them.</div><details style="margin-top:6px"><summary style="font-size:13px;color:var(--spd);cursor:pointer">Having trouble? Paste the text instead</summary><textarea id="stp" rows="5" placeholder="Copy the text from your paystub and paste it here" style="width:100%;margin-top:8px;font:12px monospace;padding:10px;border:1px solid var(--ln);border-radius:10px;background:var(--bg);color:var(--ink)"></textarea><button class="add" style="margin:8px 0 0;font-size:14px;padding:10px" onclick="stubPaste()">Fill in from this text</button></details><div style="font-size:11px;color:var(--mut);margin-top:8px">Paystub reader v17</div></div>
 <div class="card inc gt-iv" id="stubNet" style="padding:8px 16px">${stubNet()}</div>
   <div id="stubPie">${stubPaycheck()}</div>
   <h1>Weekly and yearly breakdown</h1><div id="stubOut">${stubOut()}</div>
@@ -594,7 +594,7 @@ function weekView(){
   const onlyTot=(l,c)=>tot(sum(l.map(x=>x.amount*factor[x.rep])),c);
   h+=`<div class="card inc" ${nav('income')}><h2>Income</h2>${onlyTot(S.income,'iv')}</div><div class="card bill" ${nav('bills')}><h2>Bills</h2>${onlyTot(S.bills,'bv')}</div><div class="card green" ${nav('savings')}><h2>Savings</h2>${tot(savT,'sv')}</div>`;
   const sec='background:var(--sf);color:var(--ink);border:1px solid var(--ln)';
-  h+=`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">${hasDl?'<button class="add" style="flex:1;margin:0" onclick="exportXlsx()">Export to Excel</button><button class="add" style="flex:1;margin:0" onclick="saveBackup()">Save backup</button>':''}<button class="add" style="flex:1;margin:0;${sec}" onclick="copySheet()">Copy backup</button><button class="add" style="flex:1;margin:0;${sec}" onclick="restoreSheet()">Restore backup</button></div>`;
+  h+=`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">${hasDl?'<button class="add" style="flex:1;margin:0" onclick="exportXlsx()">Export to Excel</button><button class="add" style="flex:1;margin:0" onclick="saveBackup()">Save backup</button>':''}${canDrive()?`<button class="add" style="flex:1;margin:0;${sec}" onclick="driveSheet()">Google Drive</button>`:''}<button class="add" style="flex:1;margin:0;${sec}" onclick="copySheet()">Copy backup</button><button class="add" style="flex:1;margin:0;${sec}" onclick="restoreSheet()">Restore backup</button></div>`;
   return '<div class="wk">'+h+'</div>';
 }
 function setTarget(v){S.target=v===''?'':String(Math.max(0,parseFloat(v)||0));save();render()}
@@ -696,6 +696,63 @@ function cleanBackup(d){
 }
 const taStyle='width:100%;font:12px monospace;padding:10px;border:1px solid var(--ln);border-radius:10px;background:var(--bg);color:var(--ink)';
 function backupText(){return JSON.stringify({app:'weekly-budget',version:1,savedAt:new Date().toISOString(),data:{bills:S.bills,income:S.income,savings:S.savings,goal:S.goal,stub:S.stub}})}
+const GCID='';
+const DRV_NAME='weekly-budget-backup.json',GSI='https://accounts.google.com/gsi/client';
+const canDrive=()=>!(window.claude&&window.claude.use);
+const gcid=()=>{try{return localStorage.getItem('wb_gcid')||GCID}catch(e){return GCID}};
+let gTok=null,gExp=0;
+function driveStat(k,t){const e=$('dm');if(e){e.style.color=k==='err'?'var(--bill)':k==='ok'?'var(--sav)':'var(--mut)';e.textContent=t}}
+function driveToken(){
+  return new Promise(async(res,rej)=>{
+    if(gTok&&Date.now()<gExp)return res(gTok);
+    try{await loadScript(GSI)}catch(e){return rej(new Error('Could not reach Google. Check your connection and try again.'))}
+    try{
+      const c=google.accounts.oauth2.initTokenClient({client_id:gcid(),scope:'https://www.googleapis.com/auth/drive.file',
+        callback:r=>{if(r.error)return rej(new Error(r.error==='access_denied'?'Google access was not allowed.':'Google sign-in failed ('+r.error+').'));gTok=r.access_token;gExp=Date.now()+(Number(r.expires_in||3600)-60)*1000;res(gTok)},
+        error_callback:e=>rej(new Error(e&&e.type==='popup_closed'?'The Google window was closed.':'The Google sign-in window could not open. Allow pop-ups for this page and try again.'))});
+      c.requestAccessToken({prompt:''});
+    }catch(e){rej(new Error('Google sign-in is not available right now.'))}
+  });
+}
+async function drv(url,opt){
+  const t=await driveToken(),o=opt||{};
+  const r=await fetch(url,{...o,headers:{...(o.headers||{}),Authorization:'Bearer '+t}});
+  if(r.status===401)gTok=null;
+  if(!r.ok)throw new Error(r.status===401||r.status===403?'Google Drive did not allow that. Try again, or check the Client ID.':'Google Drive error ('+r.status+').');
+  return r;
+}
+async function driveFind(){
+  const q=encodeURIComponent("name='"+DRV_NAME+"' and trashed=false");
+  const r=await drv('https://www.googleapis.com/drive/v3/files?q='+q+'&orderBy='+encodeURIComponent('modifiedTime desc')+'&pageSize=1&fields='+encodeURIComponent('files(id,modifiedTime)'));
+  const j=await r.json();return (j.files||[])[0]||null;
+}
+async function driveSave(){
+  driveStat('','Saving to Google Drive…');
+  try{
+    const f=await driveFind(),body=backupText();
+    if(f)await drv('https://www.googleapis.com/upload/drive/v3/files/'+f.id+'?uploadType=media',{method:'PATCH',headers:{'Content-Type':'application/json'},body});
+    else{const b='wbb'+Date.now(),mp='--'+b+'\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n'+JSON.stringify({name:DRV_NAME,mimeType:'application/json'})+'\r\n--'+b+'\r\nContent-Type: application/json\r\n\r\n'+body+'\r\n--'+b+'--';
+      await drv('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',{method:'POST',headers:{'Content-Type':'multipart/related; boundary='+b},body:mp})}
+    driveStat('ok','Saved to your Google Drive at '+new Date().toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})+'.');
+  }catch(e){driveStat('err',e.message||'Could not save to Google Drive.')}
+}
+async function driveRestore(){
+  driveStat('','Looking for your backup…');
+  try{
+    const f=await driveFind();
+    if(!f){driveStat('err','No backup was found in this Google account. Save one first.');return}
+    const t=await (await drv('https://www.googleapis.com/drive/v3/files/'+f.id+'?alt=media')).text();
+    if(!tryRestore(t))driveStat('err','The file in Google Drive is not a Weekly Budget backup.');
+  }catch(e){driveStat('err',e.message||'Could not read from Google Drive.')}
+}
+function setGcid(){const v=($('gc').value||'').trim();if(!/\.apps\.googleusercontent\.com$/.test(v)){$('dm').style.color='var(--bill)';$('dm').textContent='That does not look like a Client ID. It ends in .apps.googleusercontent.com.';return}try{localStorage.setItem('wb_gcid',v)}catch(e){}gTok=null;driveSheet()}
+function resetGcid(){try{localStorage.removeItem('wb_gcid')}catch(e){}gTok=null;driveSheet()}
+function driveSheet(){
+  const id=gcid(),sec='background:var(--sf);color:var(--ink);border:1px solid var(--ln)';
+  $('sheet').innerHTML=id?`<h3>Google Drive backup</h3><div style="color:var(--mut);margin-bottom:10px;font-size:14px">Save puts a file named weekly-budget-backup.json in your Google Drive. Restore reads the newest copy back into this device. The app can only see files it created.</div><button class="add" style="margin:0 0 8px" onclick="driveSave()">Save to Google Drive</button><button class="add" style="margin:0;${sec}" onclick="driveRestore()">Restore from Google Drive</button><div id="dm" style="font-size:13px;min-height:18px;margin-top:10px"></div><div class="btns"><button onclick="closeForm()">Close</button></div>${GCID?'':'<div style="margin-top:8px"><button style="background:none;border:0;padding:0;font:inherit;font-size:12px;color:var(--mut);text-decoration:underline" onclick="resetGcid()">Change Client ID</button></div>'}`
+  :`<h3>Google Drive backup</h3><div style="color:var(--mut);margin-bottom:8px;font-size:14px">Google Drive needs a free Client ID from your Google account, set up once. Paste it here.</div><label for="gc">Client ID</label><input id="gc" placeholder="1234-abcd.apps.googleusercontent.com" autocapitalize="off" autocorrect="off" spellcheck="false"><div id="dm" style="font-size:13px;min-height:18px;margin-top:8px"></div><div class="btns"><button onclick="closeForm()">Cancel</button><button class="pri" onclick="setGcid()">Save Client ID</button></div>`;
+  $('ov').classList.add('show');
+}
 function copySheet(){
   $('sheet').innerHTML=`<h3>Copy backup</h3><div style="color:var(--mut);margin-bottom:8px">Copy this text and keep it somewhere safe, such as a note. Paste it into Restore backup to bring your budget back.</div><textarea id="bt" readonly rows="6" style="${taStyle}"></textarea><div id="cm" style="color:var(--sav);font-size:13px;min-height:18px;margin-top:6px"></div><div class="btns"><button onclick="closeForm()">Close</button><button class="pri" onclick="doCopy()">Copy</button></div>`;
   $('bt').value=backupText();$('ov').classList.add('show');
