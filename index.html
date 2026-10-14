@@ -14,9 +14,9 @@
 <link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;600;800&display=swap" rel="stylesheet">
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
-:root{--bg:#eef1f4;--sf:#fff;--ink:#1b2430;--mut:#667385;--ln:#dde3ea;--bill:#d1495b;--sav:#2a7f62;--spd:#3a6ea5;--inc:#9a6410;--onacc:#fff;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
-@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#10151c;--sf:#1a212b;--ink:#e8edf3;--mut:#93a1b3;--ln:#2a3340;--bill:#f0707f;--sav:#4cc29a;--spd:#6aa3dc;--inc:#f0b84a;--onacc:#10151c}}
-:root[data-theme="dark"]{--bg:#10151c;--sf:#1a212b;--ink:#e8edf3;--mut:#93a1b3;--ln:#2a3340;--bill:#f0707f;--sav:#4cc29a;--spd:#6aa3dc;--inc:#f0b84a;--onacc:#10151c}
+:root{--bg:#eef1f4;--sf:#fff;--ink:#1b2430;--mut:#667385;--ln:#dde3ea;--bill:#d1495b;--sav:#2a7f62;--spd:#3a6ea5;--inc:#9a6410;--rate:#7c4dbd;--onacc:#fff;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#10151c;--sf:#1a212b;--ink:#e8edf3;--mut:#93a1b3;--ln:#2a3340;--bill:#f0707f;--sav:#4cc29a;--spd:#6aa3dc;--inc:#f0b84a;--rate:#b79cf2;--onacc:#10151c}}
+:root[data-theme="dark"]{--bg:#10151c;--sf:#1a212b;--ink:#e8edf3;--mut:#93a1b3;--ln:#2a3340;--bill:#f0707f;--sav:#4cc29a;--spd:#6aa3dc;--inc:#f0b84a;--rate:#b79cf2;--onacc:#10151c}
 *{box-sizing:border-box}
 html,body{margin:0}
 body{background:var(--bg);color:var(--ink);font:400 16px/1.4 "Schibsted Grotesk",system-ui,sans-serif;padding-bottom:84px}
@@ -58,6 +58,10 @@ h1{font-size:15px;font-weight:600;color:var(--mut);margin:0 0 12px}
 .ls .item.gt{font-size:17px}
 .ls .item.gt small{font-size:12px}
 .ls .add{font-size:15px}
+.card.rate{border-left:4px solid var(--rate)}
+.card.rate h2{color:var(--rate)}
+.gt-rate{background:var(--ln);background:color-mix(in srgb,var(--rate) 14%,transparent)}
+.item .amt small.pc{font-size:11px;font-weight:700;color:var(--mut)}
 .amt small.wy{display:block;font-weight:400;color:var(--mut);font-size:12px;text-align:right;margin-top:2px}
 .wk{font-size:14.5px}
 .wk .hero{padding:16px;margin-bottom:10px}
@@ -122,7 +126,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
 <div class="ov" id="ov"><div class="sheet" id="sheet"></div></div>
 <input type="file" id="rf" accept=".json,application/json,text/plain" style="position:absolute;left:-9999px;width:1px;height:1px;opacity:0" onchange="readBackup(this)">
 <script>
-let S={bills:[],income:[],savings:[],target:''};
+let S={bills:[],income:[],savings:[],target:'',goal:''};
 try{S=Object.assign(S,JSON.parse(localStorage.getItem('wb')||'{}'))}catch(e){}
 const save=()=>{try{localStorage.setItem('wb',JSON.stringify(S))}catch(e){}};
 const $=s=>document.getElementById(s);
@@ -196,6 +200,7 @@ function payUI(){const pm=$('f_pm').value,mt=$('f_mt').value;$('pay_m').style.di
 function payRec(){const pm=$('f_pm').value,mt=$('f_mt').value,r={pay:pm,payBy:pm==='manual'?mt:'',payNote:pm==='manual'&&mt==='other'?$('f_mo').value.trim():''};r.link=(pm==='auto'||mt==='website')?cleanLink($('f_l').value):'';return r}
 const sortKey=it=>it.per?savWk(it):it.rep==='once'?1e12+it.amount:it.amount*factor[it.rep];
 const sortAsc=l=>[...l].sort((a,b)=>sortKey(a)-sortKey(b));
+const catP=(w,t,n)=>t>0&&w>0?`${(w/t*100).toFixed(1)}% of ${n}`:'';
 const incWk=()=>sum(S.income.map(x=>x.amount*factor[x.rep]));
 const pctInc=w=>{const i=incWk();return i>0?(w/i*100).toFixed(1)+'% of income':'no income yet'};
 function tabTotal(kind){
@@ -204,18 +209,51 @@ function tabTotal(kind){
   return `<div class="item gt gt-${c}" style="cursor:default"><span>Total</span><span class="amt ${c}">${fmt(w)}<ul class="dr"><li>${fmt(w*52)}</li>${kind!=='income'?`<li>${pctInc(w)}</li>`:''}</ul></span></div>`;
 }
 const eqText=it=>it.rep==='monthly'?`${fmt(it.amount)} monthly × 12 ÷ 52`:it.rep==='biweekly'?`${fmt(it.amount)} every 2 weeks ÷ 2`:it.rep==='weekly'?`${fmt(it.amount)} weekly`:'one-time, not counted';
-function pie(parts){
-  const tot=sum(parts.map(p=>p[0])),svg=(inner,l)=>`<svg viewBox="0 0 120 120" width="170" height="170" style="display:block;margin:16px auto 4px" role="img" aria-label="${l}">${inner}</svg>`;
-  if(tot<=0)return svg('<circle cx="60" cy="60" r="56" style="fill:var(--ln)"/>','No data yet');
+function pie(parts,rate){
+  const C=67,R=52,tot=sum(parts.map(p=>p[0])),svg=(inner,l)=>`<svg viewBox="0 0 134 134" width="170" height="170" style="display:block;margin:16px auto 4px" role="img" aria-label="${l}">${inner}</svg>`;
+  const rr=61,len=2*Math.PI*rr,f=Math.max(0,Math.min(1,(rate||0)/100));
+  const ring=`<circle cx="${C}" cy="${C}" r="${rr}" fill="none" style="stroke:var(--ln)" stroke-width="6"/>`+(f>0?`<circle cx="${C}" cy="${C}" r="${rr}" fill="none" style="stroke:var(--rate)" stroke-width="6" stroke-linecap="round" stroke-dasharray="${(len*f).toFixed(2)} ${len.toFixed(2)}" transform="rotate(-90 ${C} ${C})"/>`:'');
+  if(tot<=0)return svg(ring+`<circle cx="${C}" cy="${C}" r="${R}" style="fill:var(--ln)"/>`,'No data yet');
   let a0=-Math.PI/2,out='';
   parts.forEach(([v,col])=>{
-    if(v<=0)return;const f=v/tot;
-    if(f>=0.9999){out+=`<circle cx="60" cy="60" r="56" style="fill:${col}"/>`;return}
-    const a1=a0+f*2*Math.PI,x0=60+56*Math.cos(a0),y0=60+56*Math.sin(a0),x1=60+56*Math.cos(a1),y1=60+56*Math.sin(a1);
-    out+=`<path d="M60 60L${x0.toFixed(2)} ${y0.toFixed(2)}A56 56 0 ${f>0.5?1:0} 1 ${x1.toFixed(2)} ${y1.toFixed(2)}Z" style="fill:${col};stroke:var(--sf);stroke-width:2"/>`;
+    if(v<=0)return;const q=v/tot;
+    if(q>=0.9999){out+=`<circle cx="${C}" cy="${C}" r="${R}" style="fill:${col}"/>`;return}
+    const a1=a0+q*2*Math.PI,x0=C+R*Math.cos(a0),y0=C+R*Math.sin(a0),x1=C+R*Math.cos(a1),y1=C+R*Math.sin(a1);
+    out+=`<path d="M${C} ${C}L${x0.toFixed(2)} ${y0.toFixed(2)}A${R} ${R} 0 ${q>0.5?1:0} 1 ${x1.toFixed(2)} ${y1.toFixed(2)}Z" style="fill:${col};stroke:var(--sf);stroke-width:2"/>`;
     a0=a1;
   });
-  return svg(out,'Weekly income split: bills, savings, spending');
+  return svg(ring+out,'Weekly income split with savings rate ring');
+}
+function weekMetrics(){
+  const inc=sum(S.income.map(x=>x.amount*factor[x.rep])),bil=sum(S.bills.map(x=>x.amount*factor[x.rep])),sav=sum(S.savings.map(savWk));
+  const avail=inc-bil,savT=Math.min(sav,Math.max(avail,0)),spd=Math.max(0,avail-savT);
+  const rate=inc>0?savT/inc*100:0,goal=parseFloat(S.goal),has=goal>0,target=has?inc*goal/100:0;
+  return{inc,bil,sav,savT,spd,rate,goal,has,target,gap:target-savT};
+}
+const goTab=k=>`role="button" tabindex="0" onclick="tab='${k}';render();scrollTo(0,0)" onkeydown="if(event.key==='Enter'){tab='${k}';render();scrollTo(0,0)}"`;
+function goalCard(m){
+  if(!m.has)return `<div class="card rate" ${goTab('goal')} style="padding:4px 14px;cursor:pointer;font-size:12.5px"><div class="item" style="padding:5px 0;border:0"><span>Set a savings goal</span><span class="amt" style="color:var(--rate)">Set</span></div></div>`;
+  const pts=Math.abs(m.rate-m.goal).toFixed(1),met=m.gap<=0,fill=Math.min(100,m.goal>0?m.rate/m.goal*100:0);
+  return `<div class="card rate" ${goTab('goal')} style="padding:4px 14px 6px;cursor:pointer;font-size:12.5px"><h2 style="font-size:12px;margin:6px 0 0">Savings goal ${m.goal.toFixed(1)}% of income</h2>
+  <div style="height:6px;border-radius:3px;background:var(--ln);overflow:hidden;margin:6px 0 4px"><i style="display:block;height:100%;width:${fill}%;background:var(--rate)"></i></div>
+  <div class="row" style="padding:2px 0;border:0"><span>Actual</span><b>${m.rate.toFixed(1)}%</b></div>
+  <div class="row" style="padding:2px 0;border:0"><span>${met?'Ahead of goal':'Short of goal'}</span><b style="color:${met?'var(--sav)':'var(--bill)'}">${pts} points${met?'':' · '+fmt(m.gap)+' a week'}</b></div></div>`;
+}
+function setGoal(v){const n=parseFloat(v);S.goal=n>0?String(Math.min(100,n)):'';save();render()}
+function goalView(){
+  const m=weekMetrics(),pts=Math.abs(m.rate-m.goal).toFixed(1),met=m.gap<=0;
+  let h=`<div class="ls"><h1>Savings goal</h1><div class="card rate gt-rate" style="padding:8px 16px"><label for="gp" style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0;font-size:14px;color:var(--ink)"><span>Goal: percent of income</span><span style="display:flex;align-items:center;gap:6px;font-weight:600"><input id="gp" type="number" inputmode="decimal" step="0.1" min="0" max="100" placeholder="20" value="${esc(S.goal)}" onchange="setGoal(this.value)" style="width:90px;padding:7px 10px;font-size:15px;text-align:right;background:var(--sf)">%</span></label></div>`;
+  if(!m.has)return h+`<div class="empty">Enter the percent of your income you want to save. The Weekly screen then shows how far you are from it.</div></div>`;
+  h+=`<div class="card rate"><h2>Weekly</h2>
+  <div class="row"><span>Income</span><b>${fmt(m.inc)}</b></div>
+  <div class="row"><span>Goal · ${m.goal.toFixed(1)}%</span><b>${fmt(m.target)}</b></div>
+  <div class="row"><span>Actual savings · ${m.rate.toFixed(1)}%</span><b>${fmt(m.savT)}</b></div>
+  <div class="row"><span>${met?'Ahead of goal':'Short of goal'} · ${pts} points</span><b style="color:${met?'var(--sav)':'var(--bill)'}">${met?'+':'-'}${fmt(Math.abs(m.gap))}</b></div></div>
+  <div class="card rate"><h2>Per year</h2>
+  <div class="row"><span>Goal</span><b>${fmt(m.target*52)}</b></div>
+  <div class="row"><span>Actual savings</span><b>${fmt(m.savT*52)}</b></div>
+  <div class="row"><span>${met?'Ahead':'Short'}</span><b style="color:${met?'var(--sav)':'var(--bill)'}">${met?'+':'-'}${fmt(Math.abs(m.gap)*52)}</b></div></div></div>`;
+  return h;
 }
 const PC='weekly-paycheck';
 function setPaycheck(v){
@@ -243,22 +281,24 @@ function weekView(){
   const pct=v=>inc>0?Math.max(0,Math.min(100,v/inc*100)):0;
   let h=paycheckCard()+potentialCard()+remindersCard();
   h+=`<div class="hero"><div class="cap">${label}</div><div class="big" style="color:${big<0?'var(--bill)':'var(--ink)'}">${fmt(big)}</div>
-  ${pie([[bil,'var(--bill)'],[savT,'var(--sav)'],[Math.max(spd,0),'var(--spd)']])}
+  ${pie([[bil,'var(--bill)'],[savT,'var(--sav)'],[Math.max(spd,0),'var(--spd)']],inc>0?savT/inc*100:0)}
   ${note}
   <div style="margin-top:12px">
   <div class="row"><span><i class="dot" style="background:var(--inc)"></i>Income</span><b>${fmt(inc)}</b></div>
   <div class="row"><span><i class="dot" style="background:var(--bill)"></i>Bills${inc>0?' · '+Math.round(bil/inc*100)+'%':''}</span><b>${fmt(bil)}</b></div>
   <div class="row"><span><i class="dot" style="background:var(--sav)"></i>Savings${inc>0?' · '+Math.round(savT/inc*100)+'%':''}${extra>0?`<small style="display:block;color:var(--mut);font-size:13px;margin-left:20px">includes ${fmt(extra)} extra</small>`:short>0?`<small style="display:block;color:var(--mut);font-size:13px;margin-left:20px">planned ${fmt(sav)}, short ${fmt(short)}</small>`:''}</span><b>${fmt(savT)}</b></div>
+  <div class="row"><span><i class="dot" style="background:var(--rate)"></i>Savings rate</span><b style="color:var(--rate)">${inc>0?(savT/inc*100).toFixed(1):'0.0'}% of income</b></div>
   <div class="row"><span><i class="dot" style="background:var(--spd)"></i>Spending${inc>0?' · '+Math.round(Math.max(spd,0)/inc*100)+'%':''}</span><b>${fmt(spd)}</b></div>
   </div></div>`;
   const nav=k=>`role="button" tabindex="0" style="cursor:pointer" onclick="tab='${k}';render();scrollTo(0,0)" onkeydown="if(event.key==='Enter'){tab='${k}';render();scrollTo(0,0)}"`;
-  const line=(name,amt,c,k,w)=>`<div class="item" ${nav(k)}><span>${esc(name)}</span><span class="amt ${c}">${amt}${w==null?'':`<small style="display:block;font-weight:400;color:var(--mut);font-size:13px;text-align:right">${fmt(w*52)} a year</small>`}</span></div>`;
+  const line=(name,amt,c,k,w,sub)=>`<div class="item" ${nav(k)}><span>${esc(name)}</span><span class="amt ${c}">${amt}${w==null?'':`<small style="display:block;font-weight:400;color:var(--mut);font-size:13px;text-align:right">${fmt(w*52)} a year</small>`}${sub?`<small class="pc">${sub}</small>`:''}</span></div>`;
   const tot=(w,c)=>`<div class="item gt gt-${c}" style="cursor:default"><span>Total</span><span class="amt ${c}">${fmt(w)}<ul class="dr"><li>${fmt(w*52)} a year</li>${c==='iv'?'':`<li>${pctInc(w)}</li>`}</ul></span></div>`;
   const kinds={iv:'income',bv:'bills'};
-  const rows=(l,c)=>l.length?sortAsc(l).map(it=>line(it.name,it.rep==='once'?'—':fmt(it.amount*factor[it.rep]),c,kinds[c],it.rep==='once'?null:it.amount*factor[it.rep])).join('')+tot(sum(l.map(x=>x.amount*factor[x.rep])),c):'<div class="empty">None added yet.</div>';
+  const rows=(l,c)=>{if(!l.length)return '<div class="empty">None added yet.</div>';const T=sum(l.map(x=>x.amount*factor[x.rep]));return sortAsc(l).map(it=>{const w=it.amount*factor[it.rep];return line(it.name,it.rep==='once'?'—':fmt(w),c,kinds[c],it.rep==='once'?null:w,it.rep==='once'?'':catP(w,T,kinds[c]))}).join('')+tot(T,c)};
   const exRow=extra>0?line('Extra from unspent money',fmt(extra),'sv','savings',extra):'';
   const shRow=short>0?`<div class="item" ${nav('savings')}><span>Reduced to cover shortfall</span><span class="amt" style="color:var(--bill)">-${fmt(short)}</span></div>`:'';
-  const srows=(S.savings.length||extra>0)?sortAsc(S.savings).map(s=>line(s.name,fmt(savWk(s)),'sv','savings',savWk(s))).join('')+exRow+shRow+tot(savT,'sv'):'<div class="empty">None added yet.</div>';
+  const srows=(S.savings.length||extra>0)?sortAsc(S.savings).map(s=>line(s.name,fmt(savWk(s)),'sv','savings',savWk(s),catP(savWk(s),sav,'savings'))).join('')+exRow+shRow+tot(savT,'sv'):'<div class="empty">None added yet.</div>';
+  h+=goalCard(weekMetrics());
   h+=`<div class="card"><h2>Per year</h2>
   <div class="row"><span><i class="dot" style="background:var(--inc)"></i>Income</span><b>${fmt(inc*52)}</b></div>
   <div class="row"><span><i class="dot" style="background:var(--bill)"></i>Bills${inc>0?' · '+Math.round(bil/inc*100)+'%':''}</span><b>${fmt(bil*52)}</b></div>
@@ -300,6 +340,7 @@ async function exportXlsx(){
 }
 function listView(kind,title,addLabel,empty){
   const l=S[kind];
+  const T=kind==='savings'?sum(l.map(savWk)):sum(l.map(x=>x.amount*factor[x.rep]));
   const items=sortAsc(l).map(it=>{
     const L=[];
     if(kind==='savings'){L.push(it.mode==='pct'?`${it.pct}% of spending money`:`${fmt(it.amount)} per ${it.per}`,pctInc(savWk(it)))}
@@ -313,13 +354,13 @@ function listView(kind,title,addLabel,empty){
       }
     }
     const w=kind==='savings'?savWk(it):it.rep==='once'?null:it.amount*factor[it.rep];
-    return `<div class="item" role="button" tabindex="0" style="cursor:pointer" onkeydown="if(event.key==='Enter')openForm('${kind}','${it.id}')" onclick="openForm('${kind}','${it.id}')"><span>${esc(it.name)}<ul class="dl">${L.map(x=>`<li>${x}</li>`).join('')}</ul></span><span class="amt ${({savings:'sv',bills:'bv',income:'iv'})[kind]}">${it.mode==='pct'?it.pct+'%':fmt(it.amount)}${w==null?'':`<small class="wy">W= ${fmt(w)}</small><small class="wy">Y= ${fmt(w*52)}</small>`}</span></div>`}).join('');
+    return `<div class="item" role="button" tabindex="0" style="cursor:pointer" onkeydown="if(event.key==='Enter')openForm('${kind}','${it.id}')" onclick="openForm('${kind}','${it.id}')"><span>${esc(it.name)}<ul class="dl">${L.map(x=>`<li>${x}</li>`).join('')}</ul></span><span class="amt ${({savings:'sv',bills:'bv',income:'iv'})[kind]}">${it.mode==='pct'?it.pct+'%':fmt(it.amount)}${w==null?'':`<small class="wy">W= ${fmt(w)}</small><small class="wy">Y= ${fmt(w*52)}</small>${catP(w,T,kind)?`<small class="wy pc">${catP(w,T,kind)}</small>`:''}`}</span></div>`}).join('');
   return `<div class="ls"><h1>${title}</h1><button style="margin:0 0 12px" class="add ${({savings:'gadd',bills:'badd',income:'iadd'})[kind]}" onclick="openForm('${kind}')">${addLabel}</button>${kind==='bills'?notifyLine():''}<div class="card ${({savings:'green',bills:'bill',income:'inc'})[kind]}">${items?items+tabTotal(kind):`<div class="empty">${empty}</div>`}</div>${l.length?`<button class="add" style="margin:12px 0 0;background:var(--sf);color:var(--bill);border:1px solid var(--bill)" onclick="askClear('${kind}')">Delete all ${({bills:'bills',income:'income',savings:'savings'})[kind]}</button>`:''}</div>`;
 }
 
 function render(){
-  $('app').innerHTML=tab==='week'?weekView():tab==='bills'?listView('bills','Bills','Add a bill','No bills yet. Add rent, utilities, subscriptions.'):tab==='income'?listView('income','Income','Add income','No income yet. Add a paycheck with its pay date.'):listView('savings','Savings','Add a savings goal','No savings yet. Set an amount to set aside each week or month.');
-  $('tabs').innerHTML=[['week','Weekly'],['bills','Bills'],['income','Income'],['savings','Savings']].map(([k,t])=>`<button class="${tab===k?'on':''}" onclick="tab='${k}';render();scrollTo(0,0)">${t}</button>`).join('');
+  $('app').innerHTML=tab==='week'?weekView():tab==='bills'?listView('bills','Bills','Add a bill','No bills yet. Add rent, utilities, subscriptions.'):tab==='income'?listView('income','Income','Add income','No income yet. Add a paycheck with its pay date.'):tab==='goal'?goalView():listView('savings','Savings','Add a savings goal','No savings yet. Set an amount to set aside each week or month.');
+  $('tabs').innerHTML=[['week','Weekly'],['bills','Bills'],['income','Income'],['savings','Savings'],['goal','Goal']].map(([k,t])=>`<button class="${tab===k?'on':''}" onclick="tab='${k}';render();scrollTo(0,0)">${t}</button>`).join('');
 }
 
 function openForm(kind,id){
@@ -345,7 +386,7 @@ function msg(title,text,btns){
 }
 async function saveBackup(){
   if(!dl)return;
-  const pack={app:'weekly-budget',version:1,savedAt:new Date().toISOString(),data:{bills:S.bills,income:S.income,savings:S.savings}};
+  const pack={app:'weekly-budget',version:1,savedAt:new Date().toISOString(),data:{bills:S.bills,income:S.income,savings:S.savings,goal:S.goal}};
   try{await dl.save({filename:'weekly-budget-backup.json',data:JSON.stringify(pack,null,2)})}catch(e){if(!e||e.code!=='declined')msg('Could not save','The backup could not be saved ('+((e&&e.code)||'error')+').')}
 }
 function cleanBackup(d){
@@ -360,7 +401,7 @@ function cleanBackup(d){
   };
 }
 const taStyle='width:100%;font:12px monospace;padding:10px;border:1px solid var(--ln);border-radius:10px;background:var(--bg);color:var(--ink)';
-function backupText(){return JSON.stringify({app:'weekly-budget',version:1,savedAt:new Date().toISOString(),data:{bills:S.bills,income:S.income,savings:S.savings}})}
+function backupText(){return JSON.stringify({app:'weekly-budget',version:1,savedAt:new Date().toISOString(),data:{bills:S.bills,income:S.income,savings:S.savings,goal:S.goal}})}
 function copySheet(){
   $('sheet').innerHTML=`<h3>Copy backup</h3><div style="color:var(--mut);margin-bottom:8px">Copy this text and keep it somewhere safe, such as a note. Paste it into Restore backup to bring your budget back.</div><textarea id="bt" readonly rows="6" style="${taStyle}"></textarea><div id="cm" style="color:var(--sav);font-size:13px;min-height:18px;margin-top:6px"></div><div class="btns"><button onclick="closeForm()">Close</button><button class="pri" onclick="doCopy()">Copy</button></div>`;
   $('bt').value=backupText();$('ov').classList.add('show');
@@ -383,7 +424,7 @@ function tryRestore(text){
   try{
     const o=JSON.parse(text);
     if(!o||o.app!=='weekly-budget'||!o.data)return false;
-    pending=cleanBackup(o.data);
+    pending=cleanBackup(o.data);{const g=parseFloat(o.data.goal);pending.goal=g>0?String(Math.min(100,g)):''}
     msg('Restore backup?',`This backup has ${pending.bills.length} bills, ${pending.income.length} income and ${pending.savings.length} savings entries. It replaces what is on this device now.`,[['Cancel',''],['Restore','applyRestore()']]);
     return true;
   }catch(e){return false}
@@ -398,7 +439,7 @@ function readBackup(inp){
 }
 function applyRestore(){
   if(!pending)return;
-  S.bills=pending.bills;S.income=pending.income;S.savings=pending.savings;pending=null;
+  S.bills=pending.bills;S.income=pending.income;S.savings=pending.savings;S.goal=pending.goal||'';pending=null;
   save();render();scrollTo(0,0);
   msg('Restored','Your budget has been restored.');
 }
