@@ -61,6 +61,7 @@ h1{font-size:15px;font-weight:600;color:var(--mut);margin:0 0 12px}
 .card.rate{border-left:4px solid var(--rate)}
 .card.rate h2{color:var(--rate)}
 .gt-rate{background:var(--ln);background:color-mix(in srgb,var(--rate) 14%,transparent)}
+.item.tb{font-weight:700}
 .item .amt small.pc{font-size:11px;font-weight:700;color:var(--mut)}
 .amt small.wy{display:block;font-weight:400;color:var(--mut);font-size:12px;text-align:right;margin-top:2px}
 .wk{font-size:14.5px}
@@ -105,7 +106,7 @@ h1{font-size:15px;font-weight:600;color:var(--mut);margin:0 0 12px}
 .warn{color:var(--bill);font-size:14px;margin-top:8px}
 .add{display:block;width:100%;border:0;border-radius:12px;background:var(--ink);color:var(--bg);font:600 16px inherit;font-family:inherit;padding:14px;margin-top:4px}
 .tabs{position:fixed;left:0;right:0;bottom:0;background:var(--sf);border-top:1px solid var(--ln);display:flex;padding-bottom:env(safe-area-inset-bottom,0px)}
-.tabs button{flex:1;border:0;background:none;color:var(--mut);font:600 13px inherit;font-family:inherit;padding:14px 4px}
+.tabs button{flex:1;border:0;background:none;color:var(--mut);font:600 12px inherit;font-family:inherit;padding:14px 2px}
 .tabs button.on{color:var(--ink);box-shadow:inset 0 3px 0 var(--spd)}
 .ov{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:flex-end;justify-content:center;z-index:5}
 .ov.show{display:flex}
@@ -125,8 +126,9 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
 <nav class="tabs" id="tabs"></nav>
 <div class="ov" id="ov"><div class="sheet" id="sheet"></div></div>
 <input type="file" id="rf" accept=".json,application/json,text/plain" style="position:absolute;left:-9999px;width:1px;height:1px;opacity:0" onchange="readBackup(this)">
+<input type="file" id="sf" accept="image/*,application/pdf" style="position:absolute;left:-9999px;width:1px;height:1px;opacity:0" onchange="stubPick(this)">
 <script>
-let S={bills:[],income:[],savings:[],target:'',goal:''};
+let S={bills:[],income:[],savings:[],target:'',goal:'',stub:null};
 try{S=Object.assign(S,JSON.parse(localStorage.getItem('wb')||'{}'))}catch(e){}
 const save=()=>{try{localStorage.setItem('wb',JSON.stringify(S))}catch(e){}};
 const $=s=>document.getElementById(s);
@@ -211,9 +213,9 @@ function tabTotal(kind){
 const eqText=it=>it.rep==='monthly'?`${fmt(it.amount)} monthly × 12 ÷ 52`:it.rep==='biweekly'?`${fmt(it.amount)} every 2 weeks ÷ 2`:it.rep==='weekly'?`${fmt(it.amount)} weekly`:'one-time, not counted';
 function pie(parts,rate){
   const C=67,R=52,tot=sum(parts.map(p=>p[0])),svg=(inner,l)=>`<svg viewBox="0 0 134 134" width="170" height="170" style="display:block;margin:16px auto 4px" role="img" aria-label="${l}">${inner}</svg>`;
-  const rr=61,len=2*Math.PI*rr,f=Math.max(0,Math.min(1,(rate||0)/100));
+  const noRing=rate==null,rr=61,len=2*Math.PI*rr,f=Math.max(0,Math.min(1,(rate||0)/100));
   const ring=`<circle cx="${C}" cy="${C}" r="${rr}" fill="none" style="stroke:var(--ln)" stroke-width="6"/>`+(f>0?`<circle cx="${C}" cy="${C}" r="${rr}" fill="none" style="stroke:var(--rate)" stroke-width="6" stroke-linecap="round" stroke-dasharray="${(len*f).toFixed(2)} ${len.toFixed(2)}" transform="rotate(-90 ${C} ${C})"/>`:'');
-  if(tot<=0)return svg(ring+`<circle cx="${C}" cy="${C}" r="${R}" style="fill:var(--ln)"/>`,'No data yet');
+  if(tot<=0)return svg((noRing?'':ring)+`<circle cx="${C}" cy="${C}" r="${R}" style="fill:var(--ln)"/>`,'No data yet');
   let a0=-Math.PI/2,out='';
   parts.forEach(([v,col])=>{
     if(v<=0)return;const q=v/tot;
@@ -222,7 +224,7 @@ function pie(parts,rate){
     out+=`<path d="M${C} ${C}L${x0.toFixed(2)} ${y0.toFixed(2)}A${R} ${R} 0 ${q>0.5?1:0} 1 ${x1.toFixed(2)} ${y1.toFixed(2)}Z" style="fill:${col};stroke:var(--sf);stroke-width:2"/>`;
     a0=a1;
   });
-  return svg(ring+out,'Weekly income split with savings rate ring');
+  return svg((noRing?'':ring)+out,'Weekly income split with savings rate ring');
 }
 function weekMetrics(){
   const inc=sum(S.income.map(x=>x.amount*factor[x.rep])),bil=sum(S.bills.map(x=>x.amount*factor[x.rep])),sav=sum(S.savings.map(savWk));
@@ -238,6 +240,81 @@ function goalCard(m){
   <div style="height:6px;border-radius:3px;background:var(--ln);overflow:hidden;margin:6px 0 4px"><i style="display:block;height:100%;width:${fill}%;background:var(--rate)"></i></div>
   <div class="row" style="padding:2px 0;border:0"><span>Actual</span><b>${m.rate.toFixed(1)}%</b></div>
   <div class="row" style="padding:2px 0;border:0"><span>${met?'Ahead of goal':'Short of goal'}</span><b style="color:${met?'var(--sav)':'var(--bill)'}">${pts} points${met?'':' · '+fmt(m.gap)+' a week'}</b></div></div>`;
+}
+const PERIODS={week:{n:'Every week',y:52},biweekly:{n:'Every 2 weeks',y:26},semi:{n:'Twice a month',y:24},month:{n:'Once a month',y:12}};
+function stubDefaults(){const t=(id,name,type)=>({id,name,amount:'',type});return{period:'biweekly',gross:'',items:[t('t1','Federal income tax','tax'),t('t2','State income tax','tax'),t('t3','Social Security','tax'),t('t4','Medicare','tax'),t('d1','Health insurance','ded'),t('d2','Dental and vision','ded'),t('d3','401(k) or retirement','ded'),t('d4','Other deductions','ded')]}}
+function stub(){if(!S.stub||!Array.isArray(S.stub.items))S.stub=stubDefaults();return S.stub}
+function cleanStub(x){
+  if(!x||typeof x!=='object'||!Array.isArray(x.items))return null;
+  const num=v=>{const n=parseFloat(v);return n>=0?String(n):''};
+  return{period:PERIODS[x.period]?x.period:'biweekly',gross:num(x.gross),items:x.items.filter(i=>i&&typeof i==='object').slice(0,40).map((i,n)=>({id:String(i.id||'x'+n).replace(/[^a-z0-9]/gi,'').slice(0,30)||'x'+n,name:String(i.name||'Other').slice(0,60),amount:num(i.amount),type:i.type==='tax'?'tax':'ded'}))};
+}
+function stubCalc(){
+  const st=stub(),y=PERIODS[st.period].y,g=parseFloat(st.gross)||0;
+  const of=t=>st.items.filter(i=>i.type===t).map(i=>({...i,v:parseFloat(i.amount)||0}));
+  const tax=of('tax'),ded=of('ded'),tt=sum(tax.map(r=>r.v)),td=sum(ded.map(r=>r.v));
+  return{st,y,g,tax,ded,tt,td,net:g-tt-td,wk:v=>v*y/52,yr:v=>v*y};
+}
+let stubFile=null;
+function stubPick(inp){
+  const f=inp.files&&inp.files[0];inp.value='';
+  if(!f)return;
+  if(f.type.startsWith('image/')){
+    const r=new FileReader();
+    r.onload=()=>{const im=new Image();
+      im.onload=()=>{const k=Math.min(1,1100/Math.max(im.width,im.height)),cv=document.createElement('canvas');cv.width=Math.round(im.width*k);cv.height=Math.round(im.height*k);cv.getContext('2d').drawImage(im,0,0,cv.width,cv.height);stubFile={name:f.name,img:cv.toDataURL('image/jpeg',0.8)};render()};
+      im.onerror=()=>{stubFile={name:f.name};render()};
+      im.src=r.result};
+    r.readAsDataURL(f);
+  }else{stubFile={name:f.name};render()}
+}
+function stubClear(){stubFile=null;render()}
+function refreshStub(){const e=$('stubOut');if(e)e.innerHTML=stubOut()}
+function stubGross(v){stub().gross=v;save();refreshStub()}
+function stubPeriod(v){stub().period=v;save();refreshStub()}
+function stubSet(id,v){const i=stub().items.find(x=>x.id===id);if(i){i.amount=v;save();refreshStub()}}
+function stubDel(id){stub().items=stub().items.filter(x=>x.id!==id);save();render()}
+function stubAdd(){
+  $('sheet').innerHTML=`<h3>Add a category</h3><label for="sn">Name</label><input id="sn" placeholder="e.g. Union dues"><label for="st">Type</label><select id="st"><option value="tax">Tax</option><option value="ded" selected>Deduction</option></select><div class="btns"><button onclick="closeForm()">Cancel</button><button class="pri" onclick="stubAddSave()">Add</button></div>`;
+  $('ov').classList.add('show');
+}
+function stubAddSave(){const n=$('sn').value.trim();if(!n){$('sn').style.borderColor='var(--bill)';return}stub().items.push({id:Date.now().toString(36),name:n.slice(0,60),amount:'',type:$('st').value});save();closeForm();render()}
+function stubUse(){
+  const c=stubCalc(),w=c.wk(c.net);
+  if(!(c.g>0)||!(w>0)){msg('Enter your pay first','Add your gross pay and deductions so the take-home can be calculated.');return}
+  setPaycheck(w.toFixed(2));
+  msg('Weekly paycheck updated',`Your weekly paycheck is now ${fmt(w)}, your take-home pay.`);
+}
+function stubOut(){
+  const c=stubCalc();
+  if(!(c.g>0))return '<div class="empty">Enter your gross pay to see the breakdown.</div>';
+  const gw=c.wk(c.g),netW=c.wk(c.net),taxW=c.wk(c.tt),dedW=c.wk(c.td);
+  const bil=sum(S.bills.map(x=>x.amount*factor[x.rep])),sav=sum(S.savings.map(savWk));
+  const toBills=Math.min(bil,Math.max(netW,0)),savU=Math.min(sav,Math.max(netW-toBills,0)),spend=Math.max(0,netW-toBills-savU);
+  const pc=w=>(w/gw*100).toFixed(1)+'% of gross';
+  const wrow=(name,w,col,cls)=>`<div class="item ${cls||''}" style="cursor:default"><span>${col?`<i class="dot" style="background:${col}"></i>`:''}${esc(name)}</span><span class="amt">${fmt(w)}<small class="wy">${fmt(w*52)} a year</small><small class="wy pc">${pc(w)}</small></span></div>`;
+  const list=l=>l.filter(r=>r.v>0).map(r=>wrow(r.name,c.wk(r.v))).join('')||'<div class="empty">None entered.</div>';
+  const warn=netW<bil?`<div class="warn" style="margin:6px 0">Take-home is ${fmt(bil-netW)} a week short of your bills.</div>`:'';
+  return pie([[taxW,'var(--mut)'],[dedW,'var(--inc)'],[toBills,'var(--bill)'],[savU,'var(--sav)'],[spend,'var(--spd)']])
+  +`<div class="card" style="padding:2px 16px 4px">${wrow('Gross pay',gw,'var(--ink)','gt gt-iv')}</div>
+  <div class="card"><h2>Taxes</h2>${list(c.tax)}${wrow('Total taxes',taxW,'var(--mut)','tb')}</div>
+  <div class="card inc"><h2>Deductions</h2>${list(c.ded)}${wrow('Total deductions',dedW,'var(--inc)','tb')}</div>
+  <div class="card green"><h2>Take-home pay</h2>${wrow('Take-home',netW,'','gt gt-sv')}${warn}
+  ${wrow('Bills',toBills,'var(--bill)')}${wrow('Savings',savU,'var(--sav)')}${wrow('Spending',spend,'var(--spd)')}</div>`;
+}
+function stubView(){
+  const st=stub();
+  const inp=i=>`<div class="row" style="padding:6px 0"><span>${esc(i.name)}</span><span style="display:flex;align-items:center;gap:6px">$<input type="number" inputmode="decimal" step="0.01" min="0" value="${esc(i.amount)}" onchange="stubSet('${i.id}',this.value)" aria-label="${esc(i.name)}" style="width:96px;padding:7px 10px;font-size:15px;text-align:right;background:var(--bg)"><button onclick="stubDel('${i.id}')" aria-label="Remove ${esc(i.name)}" style="width:30px;height:30px;border:1px solid var(--ln);border-radius:8px;background:var(--sf);color:var(--mut);font-size:16px;padding:0">×</button></span></div>`;
+  const prev=stubFile?`<div style="margin-top:10px">${stubFile.img?`<img src="${stubFile.img}" alt="Your paystub" style="width:100%;max-height:280px;object-fit:contain;border-radius:8px;background:var(--bg)">`:''}<div class="row" style="padding:6px 0 0;border:0"><span>${esc(stubFile.name)}</span><button onclick="stubClear()" style="background:none;border:0;color:var(--spd);text-decoration:underline;font:inherit">Remove</button></div></div>`:'';
+  return `<div class="ls"><h1>Paystub</h1>
+  <div class="card" style="padding:12px 16px"><button class="add" style="margin:0" onclick="document.getElementById('sf').click()">Upload paystub</button>${prev}<div class="empty" style="padding:8px 0 0">Your paystub is only shown here and is never saved. Enter the amounts from it below.</div></div>
+  <div class="card inc" style="padding:6px 16px 10px"><label for="sp">How often are you paid?</label><select id="sp" onchange="stubPeriod(this.value)">${Object.entries(PERIODS).map(([k,v])=>`<option value="${k}"${st.period===k?' selected':''}>${v.n}</option>`).join('')}</select>
+  <div class="row" style="padding:10px 0 0;border:0"><span>Gross pay per paycheck</span><span style="display:flex;align-items:center;gap:6px">$<input type="number" inputmode="decimal" step="0.01" min="0" value="${esc(st.gross)}" onchange="stubGross(this.value)" aria-label="Gross pay" style="width:110px;padding:7px 10px;font-size:15px;text-align:right;background:var(--bg)"></span></div></div>
+  <div class="card bill"><h2>Taxes (per paycheck)</h2>${st.items.filter(i=>i.type==='tax').map(inp).join('')}</div>
+  <div class="card inc"><h2>Deductions (per paycheck)</h2>${st.items.filter(i=>i.type==='ded').map(inp).join('')}</div>
+  <button class="add" style="margin:0 0 12px;background:var(--sf);color:var(--ink);border:1px solid var(--ln)" onclick="stubAdd()">Add a category</button>
+  <h1>Weekly and yearly breakdown</h1><div id="stubOut">${stubOut()}</div>
+  <button class="add" style="margin:4px 0 0" onclick="stubUse()">Use take-home as my weekly paycheck</button></div>`;
 }
 function setGoal(v){const n=parseFloat(v);S.goal=n>0?String(Math.min(100,n)):'';save();render()}
 function goalView(){
@@ -335,6 +412,12 @@ async function exportXlsx(){
   withTotal(s4,S.income.length,['E','F']);money(s4,2,['B','E','F']);add('Income',s4,[24,12,12,16,16,16]);
   const s5=X.utils.aoa_to_sheet([['Savings goal','Amount','Per','Weekly amount','Monthly amount','Yearly amount','% of income'],...sortAsc(S.savings).map(s=>[s.name,s.mode==='pct'?s.pct+'%':s.amount,s.mode==='pct'?'% of spending money':s.per,r2(savWk(s)),r2(savWk(s)*52/12),r2(savWk(s)*52),inc>0?savWk(s)/inc:0])]);
   withTotal(s5,S.savings.length,['D','E','F','G']);money(s5,2,['B','D','E','F']);Object.keys(s5).forEach(k=>{if(/^G([2-9]|\d{2,})$/.test(k))s5[k].z='0.0%'});add('Savings',s5,[24,12,10,16,16,16,14]);
+  const sc=stubCalc();
+  if(sc.g>0){
+    const xr=(n,v)=>[n,r2(v),r2(sc.wk(v)),r2(sc.yr(v)),v/sc.g];
+    const rowsX=[['Paystub category','Per paycheck','Weekly','Yearly','% of gross'],xr('Gross pay',sc.g),...sc.tax.filter(r=>r.v>0).map(r=>xr(r.name,r.v)),xr('Total taxes',sc.tt),...sc.ded.filter(r=>r.v>0).map(r=>xr(r.name,r.v)),xr('Total deductions',sc.td),xr('Take-home pay',sc.net)];
+    const s6=X.utils.aoa_to_sheet(rowsX);money(s6,2,['B','C','D']);Object.keys(s6).forEach(k=>{if(/^E([2-9]|\d{2,})$/.test(k))s6[k].z='0.0%'});add('Paystub',s6,[28,16,14,14,12]);
+  }
   const buf=X.write(wb,{bookType:'xlsx',type:'array'});
   try{await dl.save({filename:'weekly-budget.xlsx',data:buf})}catch(e){if(!e||e.code!=='declined')msg('Could not save','The file could not be saved ('+((e&&e.code)||'error')+').')}
 }
@@ -359,8 +442,8 @@ function listView(kind,title,addLabel,empty){
 }
 
 function render(){
-  $('app').innerHTML=tab==='week'?weekView():tab==='bills'?listView('bills','Bills','Add a bill','No bills yet. Add rent, utilities, subscriptions.'):tab==='income'?listView('income','Income','Add income','No income yet. Add a paycheck with its pay date.'):tab==='goal'?goalView():listView('savings','Savings','Add a savings goal','No savings yet. Set an amount to set aside each week or month.');
-  $('tabs').innerHTML=[['week','Weekly'],['bills','Bills'],['income','Income'],['savings','Savings'],['goal','Goal']].map(([k,t])=>`<button class="${tab===k?'on':''}" onclick="tab='${k}';render();scrollTo(0,0)">${t}</button>`).join('');
+  $('app').innerHTML=tab==='week'?weekView():tab==='bills'?listView('bills','Bills','Add a bill','No bills yet. Add rent, utilities, subscriptions.'):tab==='income'?listView('income','Income','Add income','No income yet. Add a paycheck with its pay date.'):tab==='goal'?goalView():tab==='stub'?stubView():listView('savings','Savings','Add a savings goal','No savings yet. Set an amount to set aside each week or month.');
+  $('tabs').innerHTML=[['week','Weekly'],['bills','Bills'],['income','Income'],['savings','Savings'],['goal','Goal'],['stub','Paystub']].map(([k,t])=>`<button class="${tab===k?'on':''}" onclick="tab='${k}';render();scrollTo(0,0)">${t}</button>`).join('');
 }
 
 function openForm(kind,id){
@@ -386,7 +469,7 @@ function msg(title,text,btns){
 }
 async function saveBackup(){
   if(!dl)return;
-  const pack={app:'weekly-budget',version:1,savedAt:new Date().toISOString(),data:{bills:S.bills,income:S.income,savings:S.savings,goal:S.goal}};
+  const pack={app:'weekly-budget',version:1,savedAt:new Date().toISOString(),data:{bills:S.bills,income:S.income,savings:S.savings,goal:S.goal,stub:S.stub}};
   try{await dl.save({filename:'weekly-budget-backup.json',data:JSON.stringify(pack,null,2)})}catch(e){if(!e||e.code!=='declined')msg('Could not save','The backup could not be saved ('+((e&&e.code)||'error')+').')}
 }
 function cleanBackup(d){
@@ -401,7 +484,7 @@ function cleanBackup(d){
   };
 }
 const taStyle='width:100%;font:12px monospace;padding:10px;border:1px solid var(--ln);border-radius:10px;background:var(--bg);color:var(--ink)';
-function backupText(){return JSON.stringify({app:'weekly-budget',version:1,savedAt:new Date().toISOString(),data:{bills:S.bills,income:S.income,savings:S.savings,goal:S.goal}})}
+function backupText(){return JSON.stringify({app:'weekly-budget',version:1,savedAt:new Date().toISOString(),data:{bills:S.bills,income:S.income,savings:S.savings,goal:S.goal,stub:S.stub}})}
 function copySheet(){
   $('sheet').innerHTML=`<h3>Copy backup</h3><div style="color:var(--mut);margin-bottom:8px">Copy this text and keep it somewhere safe, such as a note. Paste it into Restore backup to bring your budget back.</div><textarea id="bt" readonly rows="6" style="${taStyle}"></textarea><div id="cm" style="color:var(--sav);font-size:13px;min-height:18px;margin-top:6px"></div><div class="btns"><button onclick="closeForm()">Close</button><button class="pri" onclick="doCopy()">Copy</button></div>`;
   $('bt').value=backupText();$('ov').classList.add('show');
@@ -424,7 +507,7 @@ function tryRestore(text){
   try{
     const o=JSON.parse(text);
     if(!o||o.app!=='weekly-budget'||!o.data)return false;
-    pending=cleanBackup(o.data);{const g=parseFloat(o.data.goal);pending.goal=g>0?String(Math.min(100,g)):''}
+    pending=cleanBackup(o.data);{const g=parseFloat(o.data.goal);pending.goal=g>0?String(Math.min(100,g)):'';pending.stub=cleanStub(o.data.stub)}
     msg('Restore backup?',`This backup has ${pending.bills.length} bills, ${pending.income.length} income and ${pending.savings.length} savings entries. It replaces what is on this device now.`,[['Cancel',''],['Restore','applyRestore()']]);
     return true;
   }catch(e){return false}
@@ -439,7 +522,7 @@ function readBackup(inp){
 }
 function applyRestore(){
   if(!pending)return;
-  S.bills=pending.bills;S.income=pending.income;S.savings=pending.savings;S.goal=pending.goal||'';pending=null;
+  S.bills=pending.bills;S.income=pending.income;S.savings=pending.savings;S.goal=pending.goal||'';S.stub=pending.stub||null;pending=null;
   save();render();scrollTo(0,0);
   msg('Restored','Your budget has been restored.');
 }
