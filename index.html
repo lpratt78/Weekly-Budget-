@@ -649,7 +649,7 @@ function stubView(){
   const prev=stubFile?`<div style="margin-top:10px">${stubFile.img?`<img src="${stubFile.img}" alt="Your paystub" style="width:100%;max-height:280px;object-fit:contain;border-radius:8px;background:var(--bg)">`:''}<div class="row" style="padding:6px 0 0;border:0"><span>${esc(stubFile.name)}</span><button onclick="stubClear()" style="background:none;border:0;color:var(--spd);text-decoration:underline;font:inherit">Remove</button></div></div>`:'';
   const incName=(S.income.find(x=>x.id===curStub)||{name:'Income'}).name;
   return `<div class="ls"><h1>${esc(incName)} Paystub</h1>
-  <div class="card" style="padding:12px 16px"><button class="add" style="margin:0" onclick="document.getElementById('sf').click()">Upload paystub</button>${prev}<div id="stubStat">${statHtml()}</div><div class="empty" style="padding:8px 0 0">Your paystub is read on your phone and never uploaded or saved. The amounts below are filled in for you, and you can edit any of them.</div><details style="margin-top:6px"><summary style="font-size:13px;color:var(--spd);cursor:pointer">Having trouble? Paste the text instead</summary><textarea id="stp" rows="5" placeholder="Copy the text from your paystub and paste it here" style="width:100%;margin-top:8px;font:12px monospace;padding:10px;border:1px solid var(--ln);border-radius:10px;background:var(--bg);color:var(--ink)"></textarea><button class="add" style="margin:8px 0 0;font-size:14px;padding:10px" onclick="stubPaste()">Fill in from this text</button></details><div style="font-size:11px;color:var(--mut);margin-top:8px">Paystub reader v35</div></div>
+  <div class="card" style="padding:12px 16px"><button class="add" style="margin:0" onclick="document.getElementById('sf').click()">Upload paystub</button>${prev}<div id="stubStat">${statHtml()}</div><div class="empty" style="padding:8px 0 0">Your paystub is read on your phone and never uploaded or saved. The amounts below are filled in for you, and you can edit any of them.</div><details style="margin-top:6px"><summary style="font-size:13px;color:var(--spd);cursor:pointer">Having trouble? Paste the text instead</summary><textarea id="stp" rows="5" placeholder="Copy the text from your paystub and paste it here" style="width:100%;margin-top:8px;font:12px monospace;padding:10px;border:1px solid var(--ln);border-radius:10px;background:var(--bg);color:var(--ink)"></textarea><button class="add" style="margin:8px 0 0;font-size:14px;padding:10px" onclick="stubPaste()">Fill in from this text</button></details><div style="font-size:11px;color:var(--mut);margin-top:8px">Paystub reader v36</div></div>
 <div class="card inc gt-iv" id="stubNet" style="padding:8px 16px">${stubNet()}</div>
   <div id="stubPie">${stubPaycheck()}</div>
   <h1>Weekly and yearly breakdown</h1><div id="stubOut">${stubOut()}</div>
@@ -705,7 +705,7 @@ function weekView(){
     :short>0?`<div class="warn">Savings are short by ${fmt(short)} a week. After bills, only ${fmt(savT)} is left for savings (planned ${fmt(sav)}). Nothing is left for spending.</div>`
     :has?`<div class="cap" style="margin-top:8px">${extra>0?`${fmt(extra)} a week (${fmt(extra*52/12)} a month) of unspent money is going to savings. It shrinks as you add bills.`:'Nothing extra left over, so only your planned savings are covered.'}</div>`:'';
   const pct=v=>inc>0?Math.max(0,Math.min(100,v/inc*100)):0;
-  let h=paycheckCard()+potentialCard()+spendGoalCard(spd)+acctWeekCard()+remindersCard();
+  let h=paycheckCard()+potentialCard()+remindersCard();
   h+=`<div class="hero"><div class="cap">${label}</div><div class="big" style="color:${big<0?'var(--bill)':'var(--ink)'}">${fmt(big)}</div>
   ${pie([[bil,'var(--bill)'],[savT,'var(--sav)'],[Math.max(spd,0),'var(--spd)']],inc>0?savT/inc*100:0)}
   ${note}
@@ -724,7 +724,7 @@ function weekView(){
   const exRow=extra>0?line('Extra from unspent money',fmt(extra),'sv','savings',extra):'';
   const shRow=short>0?`<div class="item" ${nav('savings')}><span>Reduced to cover shortfall</span><span class="amt" style="color:var(--bill)">-${fmt(short)}</span></div>`:'';
   const srows=(S.savings.length||extra>0)?sortAsc(S.savings).map(s=>line(s.name,fmt(savWk(s)),'sv','savings',savWk(s),catP(savWk(s),sav,'savings'))).join('')+exRow+shRow+tot(savT,'sv'):'<div class="empty">None added yet.</div>';
-  h+=goalCard(weekMetrics());
+  h+=goalCard(weekMetrics())+spendGoalCard(spd)+acctWeekCard();
   h+=`<div class="card"><h2>Per year</h2>
   <div class="row"><span><i class="dot" style="background:var(--inc)"></i>Income</span><b>${fmt(inc*52)}</b></div>
   <div class="row"><span><i class="dot" style="background:var(--bill)"></i>Bills${inc>0?' · '+Math.round(bil/inc*100)+'%':''}</span><b>${fmt(bil*52)}</b></div>
