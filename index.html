@@ -649,7 +649,7 @@ function stubView(){
   const prev=stubFile?`<div style="margin-top:10px">${stubFile.img?`<img src="${stubFile.img}" alt="Your paystub" style="width:100%;max-height:280px;object-fit:contain;border-radius:8px;background:var(--bg)">`:''}<div class="row" style="padding:6px 0 0;border:0"><span>${esc(stubFile.name)}</span><button onclick="stubClear()" style="background:none;border:0;color:var(--spd);text-decoration:underline;font:inherit">Remove</button></div></div>`:'';
   const incName=(S.income.find(x=>x.id===curStub)||{name:'Income'}).name;
   return `<div class="ls"><h1>${esc(incName)} Paystub</h1>
-  <div class="card" style="padding:12px 16px"><button class="add" style="margin:0" onclick="document.getElementById('sf').click()">Upload paystub</button>${prev}<div id="stubStat">${statHtml()}</div><div class="empty" style="padding:8px 0 0">Your paystub is read on your phone and never uploaded or saved. The amounts below are filled in for you, and you can edit any of them.</div><details style="margin-top:6px"><summary style="font-size:13px;color:var(--spd);cursor:pointer">Having trouble? Paste the text instead</summary><textarea id="stp" rows="5" placeholder="Copy the text from your paystub and paste it here" style="width:100%;margin-top:8px;font:12px monospace;padding:10px;border:1px solid var(--ln);border-radius:10px;background:var(--bg);color:var(--ink)"></textarea><button class="add" style="margin:8px 0 0;font-size:14px;padding:10px" onclick="stubPaste()">Fill in from this text</button></details><div style="font-size:11px;color:var(--mut);margin-top:8px">Paystub reader v40</div></div>
+  <div class="card" style="padding:12px 16px"><button class="add" style="margin:0" onclick="document.getElementById('sf').click()">Upload paystub</button>${prev}<div id="stubStat">${statHtml()}</div><div class="empty" style="padding:8px 0 0">Your paystub is read on your phone and never uploaded or saved. The amounts below are filled in for you, and you can edit any of them.</div><details style="margin-top:6px"><summary style="font-size:13px;color:var(--spd);cursor:pointer">Having trouble? Paste the text instead</summary><textarea id="stp" rows="5" placeholder="Copy the text from your paystub and paste it here" style="width:100%;margin-top:8px;font:12px monospace;padding:10px;border:1px solid var(--ln);border-radius:10px;background:var(--bg);color:var(--ink)"></textarea><button class="add" style="margin:8px 0 0;font-size:14px;padding:10px" onclick="stubPaste()">Fill in from this text</button></details><div style="font-size:11px;color:var(--mut);margin-top:8px">Paystub reader v41</div></div>
 <div class="card inc gt-iv" id="stubNet" style="padding:8px 16px">${stubNet()}</div>
   <div id="stubPie">${stubPaycheck()}</div>
   <h1>Weekly and yearly breakdown</h1><div id="stubOut">${stubOut()}</div>
@@ -802,6 +802,7 @@ function acct(){
   let a=S.acct;if(!a||typeof a!=='object'||Array.isArray(a))a=S.acct={};
   a.on=!!a.on;a.day=(Number.isInteger(a.day)&&a.day>=0&&a.day<=6)?a.day:5;
   if(!Array.isArray(a.accts))a.accts=[];if(!Array.isArray(a.xfers))a.xfers=[];
+  a.def=(a.def&&typeof a.def==='object'&&a.def.amts&&typeof a.def.amts==='object')?a.def:{set:false,goal:'',amts:{}};
   a.dep=(a.dep&&typeof a.dep==='object')?a.dep:{};a.rule=(a.rule&&typeof a.rule==='object')?a.rule:{};
   if(!a.v3){
     a.v3=true;
@@ -824,11 +825,13 @@ function cleanAcct(o){
   const ids=accts.map(x=>x.id),dep={};
   if(o.dep&&typeof o.dep==='object')Object.keys(o.dep).slice(0,500).forEach(k=>{const v=cid(o.dep[k]);if(ids.includes(v))dep[cid(k)]=v});
   const xfers=(Array.isArray(o.xfers)?o.xfers:[]).filter(x=>x&&typeof x==='object'&&ids.includes(cid(x.from))&&ids.includes(cid(x.to))).slice(0,50).map((x,i)=>({id:cid(x.id)||'x'+i,from:cid(x.from),to:cid(x.to),auto:!!x.auto,amt:x.auto?'':pos(x.amt),per:x.per==='month'?'month':'week'}));
-  return{on:!!o.on,v2:!!o.v2,v3:!!o.v3,day:(Number.isInteger(o.day)&&o.day>=0&&o.day<=6)?o.day:5,accts,dep,rule:{},xfers};
+  const dm={};if(o.def&&typeof o.def==='object'&&o.def.amts&&typeof o.def.amts==='object')Object.keys(o.def.amts).slice(0,50).forEach(k=>{const d=o.def.amts[k];if(d&&typeof d==='object')dm[cid(k)]={amt:pos(d.amt),per:d.per==='month'?'month':'week'}});
+  const def={set:!!(o.def&&o.def.set),goal:pos(o.def&&o.def.goal),amts:dm};
+  return{def,on:!!o.on,v2:!!o.v2,v3:!!o.v3,day:(Number.isInteger(o.day)&&o.day>=0&&o.day<=6)?o.day:5,accts,dep,rule:{},xfers};
 }
 function acctSeed(){const a=acct();if(!a.accts.length){a.accts=Object.entries(DEFA).map(([r,[id,name]])=>({id,name,role:r}));a.xfers=[{id:'xb',from:'a_spend',to:'a_bills',amt:'',per:'week'},{id:'xs',from:'a_spend',to:'a_save',amt:'',per:'week'}]}}
 function acctOn(on){const a=acct();a.on=on;if(on)acctSeed();save();render()}
-function acctClean(a){const ids=a.accts.map(x=>x.id);Object.keys(a.dep).forEach(k=>{if(!ids.includes(a.dep[k]))delete a.dep[k]});a.xfers=a.xfers.filter(x=>ids.includes(x.from)&&ids.includes(x.to)&&x.from!==x.to)}
+function acctClean(a){const ids=a.accts.map(x=>x.id);Object.keys(a.dep).forEach(k=>{if(!ids.includes(a.dep[k]))delete a.dep[k]});a.xfers=a.xfers.filter(x=>ids.includes(x.from)&&ids.includes(x.to)&&x.from!==x.to);const xi=a.xfers.map(x=>x.id);Object.keys(a.def.amts).forEach(k=>{if(!xi.includes(k))delete a.def.amts[k]})}
 /* popups */
 const aOpts=(sel,list)=>list.map(x=>`<option value="${esc(x.id)}"${x.id===sel?' selected':''}>${esc(x.name)}</option>`).join('');
 function showSheet(html){$('sheet').innerHTML=html;$('ov').classList.add('show')}
@@ -864,7 +867,25 @@ function xSave(id){const a=acct(),f=$('xf').value,t=$('xt').value;
   const o={from:f,to:t,amt:pos($('xa').value),per:$('xp').value==='month'?'month':'week'};
   if(id){const x=a.xfers.find(q=>q.id===id);if(x)Object.assign(x,o)}else a.xfers.push(Object.assign({id:'x'+Date.now().toString(36)},o));
   save();closeForm();render()}
-function xDel(id){const a=acct();a.xfers=a.xfers.filter(q=>q.id!==id);save();closeForm();render()}
+function xDel(id){const a=acct();a.xfers=a.xfers.filter(q=>q.id!==id);delete a.def.amts[id];save();closeForm();render()}
+function defForm(){
+  const a=acct(),d=a.def,has=d.set,nm=id=>(a.accts.find(x=>x.id===id)||{name:'?'}).name;
+  const goal=has?d.goal:(parseFloat(S.spendGoal)>0?S.spendGoal:'');
+  showSheet(`<h3>Default values</h3><div style="color:var(--mut);font-size:13px;margin-bottom:6px">Reset to defaults puts these back. Leave a transfer amount blank to let the app calculate it.</div><label for="dg">Default weekly spending goal</label><input id="dg" type="number" inputmode="decimal" step="0.01" min="0" value="${esc(goal)}" placeholder="900">${a.xfers.length?a.xfers.map(x=>{const v=has?(d.amts[x.id]||{amt:'',per:'week'}):{amt:x.amt,per:x.per};return `<label>${esc(nm(x.from))} to ${esc(nm(x.to))}</label><div style="display:flex;gap:8px"><input data-dx="${esc(x.id)}" type="number" inputmode="decimal" step="0.01" min="0" value="${esc(v.amt)}" placeholder="Calculated" aria-label="Default amount" style="flex:1;min-width:0"><select data-dp="${esc(x.id)}" aria-label="How often" style="width:auto"><option value="week"${v.per==='month'?'':' selected'}>Weekly</option><option value="month"${v.per==='month'?' selected':''}>Monthly</option></select></div>`}).join(''):'<div class="empty" style="text-align:left">Add transfers first to give them default amounts.</div>'}<div class="btns"><button onclick="closeForm()">Cancel</button><button class="pri" onclick="defSave()">Save defaults</button></div>`);
+}
+function defSave(){
+  const a=acct(),amts={};
+  document.querySelectorAll('[data-dx]').forEach(i=>{const id=i.getAttribute('data-dx'),p=document.querySelector('[data-dp="'+id+'"]');amts[id]={amt:pos(i.value),per:p&&p.value==='month'?'month':'week'}});
+  a.def={set:true,goal:pos($('dg').value),amts};save();closeForm();render()}
+function acctReset(){
+  const a=acct();
+  if(!a.def.set){msg('No defaults yet','Tap Set default values first to choose the goal and transfer amounts to go back to.');return}
+  msg('Reset to defaults?','This puts your spending goal and your transfer amounts back to the defaults you set. Accounts and transfers you deleted stay deleted.',[['Cancel',''],['Reset','acctDoReset()']]);
+}
+function acctDoReset(){
+  const a=acct(),d=a.def;S.spendGoal=d.goal;
+  a.xfers.forEach(x=>{const v=d.amts[x.id];x.amt=v?v.amt:'';x.per=v?v.per:'week'});
+  save();render()}
 function depForm(incId){
   const a=acct(),i=S.income.find(q=>q.id===incId);if(!i)return;
   const sp=a.accts.find(x=>x.role==='spend'),d=a.dep[incId],cur=(d&&a.accts.some(x=>x.id===d))?d:(sp?sp.id:'');
@@ -941,7 +962,7 @@ function acctView(){
   h+=`<div class="card"><h2>Accounts <span style="font-weight:400;text-transform:none;letter-spacing:0">· per week</span></h2>${c.flows.length?c.flows.map(fLine).join(''):'<div class="empty">No accounts yet.</div>'}</div>`;
   const sp=a.accts.find(x=>x.role==='spend');
   h+=`<div class="card inc"><h2>Where income is deposited</h2>${S.income.length?S.income.map(i=>{const d=a.dep[i.id],ac=a.accts.find(x=>x.id===d)||sp;return `<div class="row" role="button" tabindex="0" onclick="depForm('${esc(i.id)}')" onkeydown="if(event.key==='Enter')depForm('${esc(i.id)}')" style="padding:9px 0;cursor:pointer"><span>${esc(i.name)}<small class="wy" style="display:block;text-align:left;font-size:12px;color:var(--mut)">${fmt(i.amount*factor[i.rep])} a week</small></span><b>${esc(ac?ac.name:'—')}</b></div>`}).join(''):'<div class="empty">Add your income on the Income screen first.</div>'}</div>`;
-  h+=`<button class="add" style="margin:4px 0 8px" onclick="acctForm()">Add an account</button><button class="add" style="margin:0 0 8px" onclick="xForm()">Add a transfer</button><button class="add" style="margin:0 0 8px;background:var(--sf);color:var(--ink);border:1px solid var(--ln)" onclick="dayForm()">Weekly transfer day: ${DAYN[a.day]}</button><div class="empty" style="text-align:left;padding:4px 0 12px">Tap any account, transfer or deposit above to change it. Transfers to Bills cover your bills total, and transfers to Savings take up the difference so Spending stays at your goal. Monthly pay is split into a weekly amount. The app only shows the amounts. It does not move any money.</div></div>`;
+  h+=`<button class="add" style="margin:4px 0 8px" onclick="acctForm()">Add an account</button><button class="add" style="margin:0 0 8px" onclick="xForm()">Add a transfer</button><button class="add" style="margin:0 0 8px;background:var(--sf);color:var(--ink);border:1px solid var(--ln)" onclick="dayForm()">Weekly transfer day: ${DAYN[a.day]}</button><button class="add" style="margin:0 0 8px;background:var(--sf);color:var(--ink);border:1px solid var(--ln)" onclick="defForm()">Set default values</button><button class="add" style="margin:0 0 8px;background:var(--sf);color:var(--bill);border:1px solid var(--bill)" onclick="acctReset()">Reset to defaults</button><div class="empty" style="text-align:left;padding:4px 0 12px">Tap any account, transfer or deposit above to change it. Transfers to Bills cover your bills total, and transfers to Savings take up the difference so Spending stays at your goal. Monthly pay is split into a weekly amount. The app only shows the amounts. It does not move any money.</div></div>`;
   return h;
 }
 function render(){
