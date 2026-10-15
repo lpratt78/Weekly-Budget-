@@ -649,7 +649,7 @@ function stubView(){
   const prev=stubFile?`<div style="margin-top:10px">${stubFile.img?`<img src="${stubFile.img}" alt="Your paystub" style="width:100%;max-height:280px;object-fit:contain;border-radius:8px;background:var(--bg)">`:''}<div class="row" style="padding:6px 0 0;border:0"><span>${esc(stubFile.name)}</span><button onclick="stubClear()" style="background:none;border:0;color:var(--spd);text-decoration:underline;font:inherit">Remove</button></div></div>`:'';
   const incName=(S.income.find(x=>x.id===curStub)||{name:'Income'}).name;
   return `<div class="ls"><h1>${esc(incName)} Paystub</h1>
-  <div class="card" style="padding:12px 16px"><button class="add" style="margin:0" onclick="document.getElementById('sf').click()">Upload paystub</button>${prev}<div id="stubStat">${statHtml()}</div><div class="empty" style="padding:8px 0 0">Your paystub is read on your phone and never uploaded or saved. The amounts below are filled in for you, and you can edit any of them.</div><details style="margin-top:6px"><summary style="font-size:13px;color:var(--spd);cursor:pointer">Having trouble? Paste the text instead</summary><textarea id="stp" rows="5" placeholder="Copy the text from your paystub and paste it here" style="width:100%;margin-top:8px;font:12px monospace;padding:10px;border:1px solid var(--ln);border-radius:10px;background:var(--bg);color:var(--ink)"></textarea><button class="add" style="margin:8px 0 0;font-size:14px;padding:10px" onclick="stubPaste()">Fill in from this text</button></details><div style="font-size:11px;color:var(--mut);margin-top:8px">Paystub reader v36</div></div>
+  <div class="card" style="padding:12px 16px"><button class="add" style="margin:0" onclick="document.getElementById('sf').click()">Upload paystub</button>${prev}<div id="stubStat">${statHtml()}</div><div class="empty" style="padding:8px 0 0">Your paystub is read on your phone and never uploaded or saved. The amounts below are filled in for you, and you can edit any of them.</div><details style="margin-top:6px"><summary style="font-size:13px;color:var(--spd);cursor:pointer">Having trouble? Paste the text instead</summary><textarea id="stp" rows="5" placeholder="Copy the text from your paystub and paste it here" style="width:100%;margin-top:8px;font:12px monospace;padding:10px;border:1px solid var(--ln);border-radius:10px;background:var(--bg);color:var(--ink)"></textarea><button class="add" style="margin:8px 0 0;font-size:14px;padding:10px" onclick="stubPaste()">Fill in from this text</button></details><div style="font-size:11px;color:var(--mut);margin-top:8px">Paystub reader v37</div></div>
 <div class="card inc gt-iv" id="stubNet" style="padding:8px 16px">${stubNet()}</div>
   <div id="stubPie">${stubPaycheck()}</div>
   <h1>Weekly and yearly breakdown</h1><div id="stubOut">${stubOut()}</div>
@@ -901,9 +901,12 @@ function acctCalc(){
     const run=inflow[x.to]+inn[x.to]-out[x.to],need=goal>0?goal-run:-run,have=Math.max(0,inflow[x.from]+inn[x.from]-out[x.from]);
     put(x,Math.min(have,Math.max(0,need)))});
   if(goal>0&&sp){
-    const run=inflow[sp.id]+inn[sp.id]-out[sp.id],extra=run-goal;
-    const t=extra>0.004&&xs.find(x=>x.calc&&x.from===sp.id&&role(x.to)==='save');
-    if(t){t.w+=extra;out[t.from]+=extra;inn[t.to]+=extra;t.extra=extra}
+    const sv=xs.filter(x=>x.from===sp.id&&role(x.to)==='save').sort((p,q)=>(p.pinned?1:0)-(q.pinned?1:0));
+    const run=()=>inflow[sp.id]+inn[sp.id]-out[sp.id];
+    const adj=(t,d)=>{t.w+=d;out[t.from]+=d;inn[t.to]+=d;t.extra=(t.extra||0)+d};
+    let diff=run()-goal;
+    if(diff>0.004&&sv.length)adj(sv[0],diff);
+    else if(diff<-0.004){for(const t of sv){const d=Math.min(t.w,-diff);if(d>0){adj(t,-d);diff+=d}if(diff>=-0.004)break}}
   }
   const flows=a.accts.map(x=>{const pay=x.role==='bills'?bil:0;return{id:x.id,name:x.name,role:x.role,dep:inflow[x.id],inn:inn[x.id],out:out[x.id],pay,net:inflow[x.id]+inn[x.id]-out[x.id]-pay}});
   const lines=xs.map(x=>({id:x.id,from:nm(x.from),to:nm(x.to),fromId:x.from,toId:x.to,auto:x.auto,state:x.state,extra:x.extra||0,entered:parseFloat(x.amt)||0,per:x.per,amt:x.w,raw:x.per==='month'?x.w*52/12:x.w}));
@@ -914,12 +917,12 @@ function acctCalc(){
 function tLine(l,edit){
   const mo=l.per==='month',sub=mo?`Weekly = ${fmt(l.amt)}`:`Monthly = ${fmt(l.amt*52/12)}`;
   const att=edit?`role="button" tabindex="0" style="cursor:pointer" onclick="xForm('${l.id}')" onkeydown="if(event.key==='Enter')xForm('${l.id}')"`:'';
-  return `<div class="row" ${att} style="padding:9px 0;align-items:flex-start${edit?';cursor:pointer':''}"><span>${esc(l.from)} <span style="color:var(--mut)">to</span> ${esc(l.to)}<small class="wy" style="display:block;text-align:left;font-size:12px;color:var(--mut)">${l.state==='Adjusted'?'Adjusted from '+fmt(l.entered):l.state}${l.extra>0.004?' · includes '+fmt(l.extra)+' extra':''} · every ${mo?'month':'week'}</small></span><span class="amt" style="text-align:right"><b>${fmt(l.raw)}</b><small class="wy" style="display:block;font-size:12px;color:var(--mut);text-align:right">${sub}</small><small class="wy" style="display:block;font-size:12px;color:var(--mut);text-align:right">Yearly = ${fmt(l.amt*52)}</small></span></div>`}
+  return `<div class="row" ${att} style="padding:9px 0;align-items:flex-start${edit?';cursor:pointer':''}"><span>${esc(l.from)} <span style="color:var(--mut)">to</span> ${esc(l.to)}<small class="wy" style="display:block;text-align:left;font-size:12px;color:var(--mut)">${l.state==='Adjusted'?'Adjusted from '+fmt(l.entered):l.state}${l.extra>0.004?' · includes '+fmt(l.extra)+' extra':l.extra<-0.004?' · reduced by '+fmt(-l.extra)+' to reach goal':''} · every ${mo?'month':'week'}</small></span><span class="amt" style="text-align:right"><b>${fmt(l.raw)}</b><small class="wy" style="display:block;font-size:12px;color:var(--mut);text-align:right">${sub}</small><small class="wy" style="display:block;font-size:12px;color:var(--mut);text-align:right">Yearly = ${fmt(l.amt*52)}</small></span></div>`}
 function tResult(c){
   if(!c.sp)return '<div class="empty" style="padding:6px 0">Add a Spending account to see where your paychecks land.</div>';
   const d=c.goal>0?c.end-c.goal:null;
   const short=c.flows.filter(f=>f.role==='bills'&&f.net<-0.005).map(f=>`<div class="warn" style="margin:6px 0">${esc(f.name)} is ${fmt(-f.net)} a week short of your bills.</div>`).join('');
-  return short+`<div class="row" style="padding:9px 0"><span>${esc(c.sp.name)} money each week<small class="wy" style="display:block;text-align:left;font-size:12px;color:var(--mut)">after transfers</small></span><b>${fmt(c.end)}</b></div>${d==null?'':`<div class="row" style="padding:9px 0"><span>${Math.abs(d)<0.005?'On spending goal':d>0?'Above spending goal':'Below spending goal'} (${fmt(c.goal)})</span><b style="color:${d<-0.004?'var(--bill)':'var(--sav)'}">${Math.abs(d)<0.005?fmt(0):(d>0?'+':'-')+fmt(Math.abs(d))}</b></div>`}`;
+  return short+`<div class="row" style="padding:9px 0"><span>${esc(c.sp.name)} money each week<small class="wy" style="display:block;text-align:left;font-size:12px;color:var(--mut)">after transfers</small></span><b style="color:${d!=null&&d<-0.004?'var(--bill)':'var(--ink)'}">${fmt(c.end)}</b></div>${d==null?'':`<div class="row" style="padding:9px 0"><span>${Math.abs(d)<0.005?'On spending goal':d>0?'Above spending goal':'Below spending goal'} (${fmt(c.goal)})</span><b style="color:${d<-0.004?'var(--bill)':'var(--sav)'}">${Math.abs(d)<0.005?fmt(0):(d>0?'+':'-')+fmt(Math.abs(d))}</b></div>`}`;
 }
 function fLine(f){
   return `<div class="row" role="button" tabindex="0" onclick="acctForm('${f.id}')" onkeydown="if(event.key==='Enter')acctForm('${f.id}')" style="padding:10px 0;cursor:pointer"><span>${esc(f.name)}</span><span style="color:var(--mut);font-size:13px">${AROLE[f.role]}</span></div>`;
