@@ -649,7 +649,7 @@ function stubView(){
   const prev=stubFile?`<div style="margin-top:10px">${stubFile.img?`<img src="${stubFile.img}" alt="Your paystub" style="width:100%;max-height:280px;object-fit:contain;border-radius:8px;background:var(--bg)">`:''}<div class="row" style="padding:6px 0 0;border:0"><span>${esc(stubFile.name)}</span><button onclick="stubClear()" style="background:none;border:0;color:var(--spd);text-decoration:underline;font:inherit">Remove</button></div></div>`:'';
   const incName=(S.income.find(x=>x.id===curStub)||{name:'Income'}).name;
   return `<div class="ls"><h1>${esc(incName)} Paystub</h1>
-  <div class="card" style="padding:12px 16px"><button class="add" style="margin:0" onclick="document.getElementById('sf').click()">Upload paystub</button>${prev}<div id="stubStat">${statHtml()}</div><div class="empty" style="padding:8px 0 0">Your paystub is read on your phone and never uploaded or saved. The amounts below are filled in for you, and you can edit any of them.</div><details style="margin-top:6px"><summary style="font-size:13px;color:var(--spd);cursor:pointer">Having trouble? Paste the text instead</summary><textarea id="stp" rows="5" placeholder="Copy the text from your paystub and paste it here" style="width:100%;margin-top:8px;font:12px monospace;padding:10px;border:1px solid var(--ln);border-radius:10px;background:var(--bg);color:var(--ink)"></textarea><button class="add" style="margin:8px 0 0;font-size:14px;padding:10px" onclick="stubPaste()">Fill in from this text</button></details><div style="font-size:11px;color:var(--mut);margin-top:8px">Paystub reader v30</div></div>
+  <div class="card" style="padding:12px 16px"><button class="add" style="margin:0" onclick="document.getElementById('sf').click()">Upload paystub</button>${prev}<div id="stubStat">${statHtml()}</div><div class="empty" style="padding:8px 0 0">Your paystub is read on your phone and never uploaded or saved. The amounts below are filled in for you, and you can edit any of them.</div><details style="margin-top:6px"><summary style="font-size:13px;color:var(--spd);cursor:pointer">Having trouble? Paste the text instead</summary><textarea id="stp" rows="5" placeholder="Copy the text from your paystub and paste it here" style="width:100%;margin-top:8px;font:12px monospace;padding:10px;border:1px solid var(--ln);border-radius:10px;background:var(--bg);color:var(--ink)"></textarea><button class="add" style="margin:8px 0 0;font-size:14px;padding:10px" onclick="stubPaste()">Fill in from this text</button></details><div style="font-size:11px;color:var(--mut);margin-top:8px">Paystub reader v31</div></div>
 <div class="card inc gt-iv" id="stubNet" style="padding:8px 16px">${stubNet()}</div>
   <div id="stubPie">${stubPaycheck()}</div>
   <h1>Weekly and yearly breakdown</h1><div id="stubOut">${stubOut()}</div>
@@ -796,8 +796,8 @@ const AROLE={spend:'Spending',bills:'Bills',save:'Savings',other:'Paycheck'};
 const DAYN=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 function acct(){
   let a=S.acct;if(!a||typeof a!=='object'||Array.isArray(a))a=S.acct={};
-  a.on=!!a.on;a.day=(Number.isInteger(a.day)&&a.day>=0&&a.day<=6)?a.day:5;
-  if(!Array.isArray(a.accts))a.accts=[];
+  a.on=!!a.on;a.day=(Number.isInteger(a.day)&&a.day>=0&&a.day<=6)?a.day:5;a.mode=a.mode==='manual'?'manual':'auto';
+  if(!Array.isArray(a.accts))a.accts=[];if(!Array.isArray(a.xfers))a.xfers=[];
   a.dep=(a.dep&&typeof a.dep==='object')?a.dep:{};a.rule=(a.rule&&typeof a.rule==='object')?a.rule:{};
   return a;
 }
@@ -808,71 +808,98 @@ function cleanAcct(o){
   const ids=accts.map(x=>x.id),dep={},rule={};
   if(o.dep&&typeof o.dep==='object')Object.keys(o.dep).slice(0,500).forEach(k=>{const v=id(o.dep[k]);if(ids.includes(v))dep[id(k)]=v});
   if(o.rule&&typeof o.rule==='object')Object.keys(o.rule).slice(0,20).forEach(k=>{const r=o.rule[k];if(r&&typeof r==='object'&&ids.includes(id(k)))rule[id(k)]={m:['goal','all','fixed'].includes(r.m)?r.m:'goal',amt:(parseFloat(r.amt)>0?String(Math.min(1e7,parseFloat(r.amt))):'')}});
-  return{on:!!o.on,day:(Number.isInteger(o.day)&&o.day>=0&&o.day<=6)?o.day:5,accts,dep,rule};
+  const xfers=(Array.isArray(o.xfers)?o.xfers:[]).filter(x=>x&&typeof x==='object'&&ids.includes(id(x.from))&&ids.includes(id(x.to))).slice(0,50).map((x,i)=>({id:id(x.id)||'x'+i,from:id(x.from),to:id(x.to),amt:(parseFloat(x.amt)>0?String(Math.min(1e7,parseFloat(x.amt))):'')}));
+  return{on:!!o.on,day:(Number.isInteger(o.day)&&o.day>=0&&o.day<=6)?o.day:5,mode:o.mode==='manual'?'manual':'auto',accts,dep,rule,xfers};
 }
 function acctSeed(){const a=acct();if(!a.accts.length)a.accts=[{id:'a_spend',name:'Spending',role:'spend'},{id:'a_bills',name:'Bills',role:'bills'},{id:'a_save',name:'Savings',role:'save'}]}
 function acctOn(on){const a=acct();a.on=on;if(on)acctSeed();save();render()}
+function acctMode(v){acct().mode=v==='manual'?'manual':'auto';save();render()}
 function acctRename(id,v){const x=acct().accts.find(q=>q.id===id);if(x){x.name=(v||'').trim().slice(0,40)||x.name;save();render()}}
 function acctRole(id,v){const a=acct(),x=a.accts.find(q=>q.id===id);if(!x||!AROLE[v])return;
-  if(x.role==='spend'&&v!=='spend'&&a.accts.filter(q=>q.role==='spend').length<2){msg('Keep a Spending account','You need one Spending account, where paychecks land and bills and savings are paid from. Change another account to Spending first.');render();return}
-  x.role=v;if(v!=='spend'&&v!=='other')Object.keys(a.dep).forEach(k=>{if(a.dep[k]===id)delete a.dep[k]});delete a.rule[id];save();render()}
+  if(x.role==='spend'&&v!=='spend'&&a.accts.filter(q=>q.role==='spend').length<2){msg('Keep a Spending account','You need one Spending account, where paychecks land and your weekly spending money is measured. Change another account to Spending first.');render();return}
+  x.role=v;delete a.rule[id];save();render()}
+function acctClean(a){const ids=a.accts.map(x=>x.id);Object.keys(a.dep).forEach(k=>{if(!ids.includes(a.dep[k]))delete a.dep[k]});a.xfers=a.xfers.filter(x=>ids.includes(x.from)&&ids.includes(x.to))}
 function acctDel(id){const a=acct(),x=a.accts.find(q=>q.id===id);if(!x)return;
   if(x.role==='spend'&&a.accts.filter(q=>q.role==='spend').length<2){msg('Keep a Spending account','You need one Spending account. Add or change another account to Spending before removing this one.');return}
-  a.accts=a.accts.filter(q=>q.id!==id);Object.keys(a.dep).forEach(k=>{if(a.dep[k]===id)delete a.dep[k]});delete a.rule[id];save();render()}
+  a.accts=a.accts.filter(q=>q.id!==id);delete a.rule[id];acctClean(a);save();render()}
 function acctAdd(){const n=($('an').value||'').trim().slice(0,40),r=$('ar').value;if(!n){$('an').style.borderColor='var(--bill)';return}
   const a=acct();a.accts.push({id:'a'+Date.now().toString(36),name:n,role:AROLE[r]?r:'other'});save();render()}
 function acctDep(incId,v){const a=acct();if(v)a.dep[incId]=v;else delete a.dep[incId];save();render()}
 function acctRuleSet(id,k,v){const a=acct(),r=a.rule[id]||(a.rule[id]={m:'goal',amt:''});if(k==='m')r.m=['goal','all','fixed'].includes(v)?v:'goal';else{const n=parseFloat(v);r.amt=n>0?String(Math.min(1e7,n)):''}save();render()}
 function acctDay(v){acct().day=parseInt(v,10);save();render()}
-function acctCalc(){
-  const a=acct(),sp=a.accts.find(x=>x.role==='spend'),bl=a.accts.find(x=>x.role==='bills'),sv=a.accts.find(x=>x.role==='save');
-  const spId=sp?sp.id:null,others=a.accts.filter(x=>x.role==='other');
-  const dest=i=>{const d=a.dep[i.id];return(d&&a.accts.some(x=>x.id===d&&(x.role==='spend'||x.role==='other')))?d:spId};
+function xAdd(){const a=acct();if(a.accts.length<2)return;const sp=a.accts.find(x=>x.role==='spend')||a.accts[0],o=a.accts.find(x=>x.id!==sp.id);a.xfers.push({id:'x'+Date.now().toString(36),from:sp.id,to:o.id,amt:''});save();render()}
+function xSet(id,k,v){const x=acct().xfers.find(q=>q.id===id);if(!x)return;if(k==='amt'){const n=parseFloat(v);x.amt=n>0?String(Math.min(1e7,n)):''}else x[k]=v;save();render()}
+function xDel(id){const a=acct();a.xfers=a.xfers.filter(q=>q.id!==id);save();render()}
+function xFill(){const a=acct(),c=acctCalc('auto');a.xfers=c.lines.filter(l=>l.fromId&&l.toId&&l.amt>0).map((l,i)=>({id:'x'+Date.now().toString(36)+i,from:l.fromId,to:l.toId,amt:String(Math.round(l.amt*100)/100)}));save();render()}
+function acctCalc(forceMode){
+  const a=acct(),mode=forceMode||a.mode;
+  const sp=a.accts.find(x=>x.role==='spend'),bl=a.accts.find(x=>x.role==='bills'),sv=a.accts.find(x=>x.role==='save');
+  const spId=sp?sp.id:null,ids=a.accts.map(x=>x.id),nm=id=>(a.accts.find(x=>x.id===id)||{name:'?'}).name;
+  const dest=i=>{const d=a.dep[i.id];return(d&&ids.includes(d))?d:spId};
   const wk=i=>i.amount*factor[i.rep];
-  const direct=sum(S.income.filter(i=>dest(i)===spId).map(wk));
+  const inflow={};a.accts.forEach(x=>{inflow[x.id]=sum(S.income.filter(i=>dest(i)===x.id).map(wk))});
   const bil=sum(S.bills.map(x=>x.amount*factor[x.rep])),sav=sum(S.savings.map(savWk));
   const goal=parseFloat(S.spendGoal)||0;
-  const lines=[];
-  if(bil>0)lines.push({from:sp?sp.name:'Spending',to:bl?bl.name:'Bills account',amt:bil,kind:'bills'});
-  if(sav>0)lines.push({from:sp?sp.name:'Spending',to:sv?sv.name:'Savings account',amt:sav,kind:'save'});
-  let run=direct-bil-sav;const before=run;
-  others.forEach(o=>{
-    const avail=sum(S.income.filter(i=>dest(i)===o.id).map(wk)),r=a.rule[o.id]||{m:'goal',amt:''};
-    let send=0;
-    if(r.m==='all')send=avail;else if(r.m==='fixed')send=Math.max(0,parseFloat(r.amt)||0);
-    else send=Math.min(avail,Math.max(0,(goal>0?goal:0)-run,goal>0?0:-run));
-    send=Math.max(0,send);run+=send;
-    lines.push({from:o.name,to:sp?sp.name:'Spending',amt:send,kind:'in',avail,left:avail-send,rule:r.m});
-  });
-  return{a,sp,lines,direct,bil,sav,before,end:run,goal,others};
+  let lines=[];
+  if(mode==='manual'){
+    lines=a.xfers.filter(x=>ids.includes(x.from)&&ids.includes(x.to)).map(x=>({id:x.id,from:nm(x.from),to:nm(x.to),fromId:x.from,toId:x.to,amt:Math.max(0,parseFloat(x.amt)||0)}));
+  }else{
+    const sIn=sp?inflow[sp.id]:0;
+    const nb=bl?Math.max(0,bil-inflow[bl.id]):0,ns=sv?Math.max(0,sav-inflow[sv.id]):0;
+    if(sp&&bl&&nb>0)lines.push({from:sp.name,to:bl.name,fromId:sp.id,toId:bl.id,amt:nb});
+    if(sp&&sv&&ns>0)lines.push({from:sp.name,to:sv.name,fromId:sp.id,toId:sv.id,amt:ns});
+    let run=sIn-(sp&&bl?nb:0)-(sp&&sv?ns:0);
+    a.accts.filter(x=>x.role==='other').forEach(o=>{
+      const avail=inflow[o.id],r=a.rule[o.id]||{m:'goal',amt:''};
+      let send=0;
+      if(r.m==='all')send=avail;else if(r.m==='fixed')send=Math.max(0,parseFloat(r.amt)||0);
+      else send=Math.min(avail,Math.max(0,goal>0?goal-run:-run));
+      send=Math.max(0,send);run+=send;
+      if(sp)lines.push({from:o.name,to:sp.name,fromId:o.id,toId:sp.id,amt:send,left:avail-send,avail});
+    });
+  }
+  const flows=a.accts.map(x=>{const inn=sum(lines.filter(l=>l.toId===x.id).map(l=>l.amt)),out=sum(lines.filter(l=>l.fromId===x.id).map(l=>l.amt)),pay=x.role==='bills'?bil:0;return{id:x.id,name:x.name,role:x.role,dep:inflow[x.id],inn,out,pay,net:inflow[x.id]+inn-out-pay}});
+  const spF=sp?flows.find(f=>f.id===sp.id):null;
+  return{a,sp,lines,flows,bil,sav,goal,end:spF?spF.net:0,mode};
 }
-function tLine(l){return `<div class="row" style="padding:9px 0;align-items:flex-start"><span>${esc(l.from)} <span style="color:var(--mut)">to</span> ${esc(l.to)}${l.kind==='in'&&l.avail>0?`<small class="wy" style="display:block;text-align:left;font-size:12px;color:var(--mut)">${l.left>=0?'Stays in '+esc(l.from)+': '+fmt(l.left)+' a week':'Takes '+fmt(-l.left)+' a week from its balance'}</small>`:''}</span><span class="amt" style="text-align:right"><b>${fmt(l.amt)}</b><small class="wy" style="display:block;font-size:12px;color:var(--mut);text-align:right">Yearly = ${fmt(l.amt*52)}</small></span></div>`}
+function tLine(l){return `<div class="row" style="padding:9px 0;align-items:flex-start"><span>${esc(l.from)} <span style="color:var(--mut)">to</span> ${esc(l.to)}${l.avail>0?`<small class="wy" style="display:block;text-align:left;font-size:12px;color:var(--mut)">Stays in ${esc(l.from)}: ${fmt(l.left)} a week</small>`:''}</span><span class="amt" style="text-align:right"><b>${fmt(l.amt)}</b><small class="wy" style="display:block;font-size:12px;color:var(--mut);text-align:right">Yearly = ${fmt(l.amt*52)}</small></span></div>`}
 function tResult(c){
   if(!c.sp)return '<div class="empty" style="padding:6px 0">Add a Spending account to see where your paychecks land.</div>';
   const d=c.goal>0?c.end-c.goal:null;
-  return `<div class="row" style="padding:9px 0"><span>${esc(c.sp.name)} after transfers<small class="wy" style="display:block;text-align:left;font-size:12px;color:var(--mut)">what you have to spend each week</small></span><b>${fmt(c.end)}</b></div>${d==null?'':`<div class="row" style="padding:9px 0"><span>${Math.abs(d)<0.005?'On spending goal':d>0?'Above spending goal':'Below spending goal'} (${fmt(c.goal)})</span><b style="color:${d<-0.004?'var(--bill)':'var(--sav)'}">${Math.abs(d)<0.005?fmt(0):(d>0?'+':'-')+fmt(Math.abs(d))}</b></div>`}`;
+  return `<div class="row" style="padding:9px 0"><span>${esc(c.sp.name)} money each week<small class="wy" style="display:block;text-align:left;font-size:12px;color:var(--mut)">deposits plus transfers in, minus transfers out</small></span><b>${fmt(c.end)}</b></div>${d==null?'':`<div class="row" style="padding:9px 0"><span>${Math.abs(d)<0.005?'On spending goal':d>0?'Above spending goal':'Below spending goal'} (${fmt(c.goal)})</span><b style="color:${d<-0.004?'var(--bill)':'var(--sav)'}">${Math.abs(d)<0.005?fmt(0):(d>0?'+':'-')+fmt(Math.abs(d))}</b></div>`}`;
+}
+function fLine(f){
+  const parts=[f.dep>0?'Deposits '+fmt(f.dep):'',f.inn>0?'In '+fmt(f.inn):'',f.out>0?'Out '+fmt(f.out):'',f.pay>0?'Bills paid '+fmt(f.pay):''].filter(Boolean).join(' · ')||'Nothing moving';
+  return `<div class="row" style="padding:9px 0;align-items:flex-start"><span>${esc(f.name)}<small class="wy" style="display:block;text-align:left;font-size:12px;color:var(--mut)">${parts}</small></span><span class="amt" style="text-align:right"><b style="color:${f.net<-0.004?'var(--bill)':'var(--ink)'}">${fmt(f.net)}</b><small class="wy" style="display:block;font-size:12px;color:var(--mut);text-align:right">${f.net<-0.004?'short each week':'added each week'}</small></span></div>`;
 }
 function acctWeekCard(){
   const a=acct();if(!a.on)return '';
   const c=acctCalc();if(!c.lines.length)return '';
-  return `<div class="card" ${goTab('acct')} style="padding:6px 16px;cursor:pointer"><h2 style="margin:8px 0 0">Transfers every ${DAYN[a.day]}</h2>${c.lines.map(tLine).join('')}${tResult(c)}</div>`;
+  return `<div class="card" ${goTab('acct')} style="padding:6px 16px;cursor:pointer"><h2 style="margin:8px 0 0">Transfers every ${DAYN[a.day]}</h2>${c.lines.filter(l=>l.amt>0).map(tLine).join('')}${tResult(c)}</div>`;
 }
 function acctView(){
   const a=acct(),sw=`<label class="sw"><input type="checkbox" ${a.on?'checked':''} onchange="acctOn(this.checked)" aria-label="Use bank accounts and transfers"><span class="trk"></span></label>`;
   let h=`<div class="ls"><h1>Accounts</h1><div class="card" style="padding:8px 16px"><div class="row" style="padding:0;border:0"><span>Use bank accounts and transfers<small class="wy" style="display:block;text-align:left;font-size:12px;color:var(--mut)">Shows what to move between your accounts each week</small></span>${sw}</div></div>`;
-  if(!a.on)return h+`<div class="card"><div class="empty" style="text-align:left;padding:8px 0">Turn this on to name your bank accounts and see the weekly transfers: from your Spending account to Bills and Savings, and from a second paycheck account into Spending to reach your weekly spending goal. It is off until you want it.</div></div></div>`;
+  if(!a.on)return h+`<div class="card"><div class="empty" style="text-align:left;padding:8px 0">Turn this on to name your bank accounts, choose where each paycheck is deposited, and see or enter the weekly transfers between accounts compared with your weekly spending goal. It is off until you want it.</div></div></div>`;
+  const sgv=parseFloat(S.spendGoal)>0?S.spendGoal:'';
+  h+=`<div class="card" style="padding:6px 16px"><label for="sg2" style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0;font-size:14px;color:var(--ink)"><span>Weekly spending amount goal</span><span style="display:flex;align-items:center;gap:6px;font-weight:600">$<input id="sg2" type="number" inputmode="decimal" step="0.01" min="0" placeholder="900" value="${esc(sgv)}" onchange="setSpendGoal(this.value)" style="width:105px;padding:7px 10px;font-size:15px;text-align:right;background:var(--sf)"></span></label></div>`;
+  const all=a.accts,sp=a.accts.find(x=>x.role==='spend');
   const opts=(sel,list)=>list.map(x=>`<option value="${esc(x.id)}"${x.id===sel?' selected':''}>${esc(x.name)}</option>`).join('');
-  h+=`<div class="card"><h2>Your accounts</h2>${a.accts.map(x=>`<div class="row" style="padding:8px 0;gap:8px"><input value="${esc(x.name)}" onchange="acctRename('${x.id}',this.value)" aria-label="Account name" style="flex:1;min-width:0;padding:9px 10px;font-size:15px"><select onchange="acctRole('${x.id}',this.value)" aria-label="Account type" style="width:auto;max-width:46%;padding:9px 8px;font-size:14px">${Object.entries(AROLE).map(([k,v])=>`<option value="${k}"${x.role===k?' selected':''}>${v}</option>`).join('')}</select><button onclick="acctDel('${x.id}')" aria-label="Remove ${esc(x.name)}" style="width:34px;height:34px;flex-shrink:0;border:1px solid var(--ln);border-radius:8px;background:var(--sf);color:var(--mut);font-size:16px;padding:0">×</button></div>`).join('')}
-  <div style="display:flex;gap:8px;padding:10px 0 4px"><input id="an" placeholder="New account name" style="flex:1;min-width:0;padding:9px 10px;font-size:15px"><select id="ar" style="width:auto;max-width:46%;padding:9px 8px;font-size:14px"><option value="other">Paycheck</option><option value="spend">Spending</option><option value="bills">Bills</option><option value="save">Savings</option></select></div><button class="add" style="margin:4px 0 8px;font-size:14px;padding:10px" onclick="acctAdd()">Add account</button>
-  <div class="empty" style="text-align:left;padding:0 0 8px">Spending is where your paycheck lands and bills and savings are paid from. Bills and Savings receive the weekly transfers. A Paycheck account holds a paycheck that is sent into Spending, like a second earner's account.</div></div>`;
-  const dep=a.accts.filter(x=>x.role==='spend'||x.role==='other'),sp=a.accts.find(x=>x.role==='spend');
-  h+=`<div class="card inc"><h2>Where each income is deposited</h2>${S.income.length?S.income.map(i=>{const d=a.dep[i.id],cur=(d&&dep.some(x=>x.id===d))?d:(sp?sp.id:'');return `<div class="row" style="padding:8px 0;gap:8px"><span style="flex:1;min-width:0">${esc(i.name)}<small class="wy" style="display:block;text-align:left;font-size:12px;color:var(--mut)">${fmt(i.amount*factor[i.rep])} a week</small></span><select onchange="acctDep('${i.id}',this.value)" aria-label="Deposit account for ${esc(i.name)}" style="width:auto;max-width:52%;padding:9px 8px;font-size:14px">${opts(cur,dep)}</select></div>`}).join(''):'<div class="empty">Add your income on the Income screen first.</div>'}</div>`;
-  a.accts.filter(x=>x.role==='other').forEach(o=>{
-    const r=a.rule[o.id]||{m:'goal',amt:''};
-    h+=`<div class="card"><h2>${esc(o.name)} to ${esc(sp?sp.name:'Spending')}</h2><label for="rm_${o.id}">How much to transfer each week</label><select id="rm_${o.id}" onchange="acctRuleSet('${o.id}','m',this.value)"><option value="goal"${r.m==='goal'?' selected':''}>Enough to reach my spending goal</option><option value="all"${r.m==='all'?' selected':''}>All of its weekly deposits</option><option value="fixed"${r.m==='fixed'?' selected':''}>A fixed amount</option></select>${r.m==='fixed'?`<div class="row" style="padding:10px 0 0;border:0"><span>Amount each week</span><span style="display:flex;align-items:center;gap:6px">$<input type="number" inputmode="decimal" step="0.01" min="0" value="${esc(r.amt)}" onchange="acctRuleSet('${o.id}','a',this.value)" aria-label="Fixed weekly transfer" style="width:105px;padding:7px 10px;font-size:15px;text-align:right"></span></div>`:''}${r.m==='goal'&&!(parseFloat(S.spendGoal)>0)?'<div class="empty" style="text-align:left;padding:8px 0 0">Set a weekly spending amount goal on the Weekly screen. Until then, this only covers any shortfall in Spending.</div>':''}</div>`});
-  h+=`<div class="card" style="padding:6px 16px 10px"><label for="td">Transfer day</label><select id="td" onchange="acctDay(this.value)">${DAYN.map((d,i)=>`<option value="${i}"${a.day===i?' selected':''}>${d}</option>`).join('')}</select></div>`;
+  h+=`<div class="card"><h2>Your accounts</h2>${a.accts.map(x=>`<div class="row" style="padding:8px 0;gap:8px"><input value="${esc(x.name)}" onchange="acctRename('${x.id}',this.value)" aria-label="Account name" style="flex:1;min-width:0;padding:9px 10px;font-size:15px"><select onchange="acctRole('${x.id}',this.value)" aria-label="Account type" style="width:auto;max-width:42%;padding:9px 8px;font-size:14px">${Object.entries(AROLE).map(([k,v])=>`<option value="${k}"${x.role===k?' selected':''}>${v}</option>`).join('')}</select><button onclick="acctDel('${x.id}')" aria-label="Remove ${esc(x.name)}" style="width:34px;height:34px;flex-shrink:0;border:1px solid var(--ln);border-radius:8px;background:var(--sf);color:var(--mut);font-size:16px;padding:0">×</button></div>`).join('')}
+  <div style="display:flex;gap:8px;padding:10px 0 4px"><input id="an" placeholder="New account name" style="flex:1;min-width:0;padding:9px 10px;font-size:15px"><select id="ar" style="width:auto;max-width:42%;padding:9px 8px;font-size:14px"><option value="other">Paycheck</option><option value="spend">Spending</option><option value="bills">Bills</option><option value="save">Savings</option></select></div><button class="add" style="margin:4px 0 8px;font-size:14px;padding:10px" onclick="acctAdd()">Add account</button>
+  <div class="empty" style="text-align:left;padding:0 0 8px">Spending is the account whose weekly money is compared with your goal. Bills pays your bills and Savings holds your savings. A Paycheck account holds a paycheck that gets sent into Spending, like a second earner's account.</div></div>`;
+  h+=`<div class="card inc"><h2>Where each income is deposited</h2>${S.income.length?S.income.map(i=>{const d=a.dep[i.id],cur=(d&&all.some(x=>x.id===d))?d:(sp?sp.id:'');return `<div class="row" style="padding:8px 0;gap:8px"><span style="flex:1;min-width:0">${esc(i.name)}<small class="wy" style="display:block;text-align:left;font-size:12px;color:var(--mut)">${fmt(i.amount*factor[i.rep])} a week</small></span><select onchange="acctDep('${i.id}',this.value)" aria-label="Deposit account for ${esc(i.name)}" style="width:auto;max-width:52%;padding:9px 8px;font-size:14px">${opts(cur,all)}</select></div>`}).join(''):'<div class="empty">Add your income on the Income screen first.</div>'}</div>`;
+  h+=`<div class="card" style="padding:6px 16px 10px"><label for="tm">How are transfers set?</label><select id="tm" onchange="acctMode(this.value)"><option value="auto"${a.mode==='auto'?' selected':''}>Calculated by the app</option><option value="manual"${a.mode==='manual'?' selected':''}>Entered by me</option></select><label for="td">Transfer day</label><select id="td" onchange="acctDay(this.value)">${DAYN.map((d,i)=>`<option value="${i}"${a.day===i?' selected':''}>${d}</option>`).join('')}</select></div>`;
+  if(a.mode==='auto'){
+    a.accts.filter(x=>x.role==='other').forEach(o=>{
+      const r=a.rule[o.id]||{m:'goal',amt:''};
+      h+=`<div class="card"><h2>${esc(o.name)} to ${esc(sp?sp.name:'Spending')}</h2><label for="rm_${o.id}">How much to transfer each week</label><select id="rm_${o.id}" onchange="acctRuleSet('${o.id}','m',this.value)"><option value="goal"${r.m==='goal'?' selected':''}>Enough to reach my spending goal</option><option value="all"${r.m==='all'?' selected':''}>All of its weekly deposits</option><option value="fixed"${r.m==='fixed'?' selected':''}>A fixed amount</option></select>${r.m==='fixed'?`<div class="row" style="padding:10px 0 0;border:0"><span>Amount each week</span><span style="display:flex;align-items:center;gap:6px">$<input type="number" inputmode="decimal" step="0.01" min="0" value="${esc(r.amt)}" onchange="acctRuleSet('${o.id}','a',this.value)" aria-label="Fixed weekly transfer" style="width:105px;padding:7px 10px;font-size:15px;text-align:right"></span></div>`:''}${r.m==='goal'&&!(parseFloat(S.spendGoal)>0)?'<div class="empty" style="text-align:left;padding:8px 0 0">Enter a weekly spending amount goal above. Until then, this only covers any shortfall in Spending.</div>':''}</div>`});
+  }else{
+    h+=`<div class="card"><h2>Transfers I make each week</h2>${a.xfers.length?a.xfers.map(x=>`<div style="padding:8px 0;border-top:1px solid var(--ln)"><div style="display:flex;gap:6px;align-items:center"><select onchange="xSet('${x.id}','from',this.value)" aria-label="From account" style="padding:9px 8px;font-size:14px">${opts(x.from,all)}</select><span style="color:var(--mut)">to</span><select onchange="xSet('${x.id}','to',this.value)" aria-label="To account" style="padding:9px 8px;font-size:14px">${opts(x.to,all)}</select></div><div style="display:flex;gap:8px;align-items:center;justify-content:space-between;padding-top:8px"><span style="color:var(--mut);font-size:14px">Amount each week</span><span style="display:flex;align-items:center;gap:6px">$<input type="number" inputmode="decimal" step="0.01" min="0" value="${esc(x.amt)}" onchange="xSet('${x.id}','amt',this.value)" aria-label="Weekly transfer amount" style="width:105px;padding:7px 10px;font-size:15px;text-align:right"><button onclick="xDel('${x.id}')" aria-label="Remove transfer" style="width:34px;height:34px;border:1px solid var(--ln);border-radius:8px;background:var(--sf);color:var(--mut);font-size:16px;padding:0">×</button></span></div></div>`).join(''):'<div class="empty" style="text-align:left;padding:8px 0">No transfers yet. Add one, or fill them in from the app\'s suggestion.</div>'}<button class="add" style="margin:10px 0 6px;font-size:14px;padding:10px" onclick="xAdd()">Add a transfer</button><button class="add" style="margin:0 0 8px;font-size:14px;padding:10px;background:var(--sf);color:var(--ink);border:1px solid var(--ln)" onclick="xFill()">Fill in the suggested transfers</button></div>`;
+  }
   const c=acctCalc();
-  h+=`<div class="card green gt-sv" style="padding:6px 16px"><h2>Transfers every ${DAYN[a.day]}</h2>${c.lines.length?c.lines.map(tLine).join(''):'<div class="empty">Add bills, savings or a second paycheck account to see transfers.</div>'}${tResult(c)}</div>`;
+  h+=`<div class="card green gt-sv" style="padding:6px 16px"><h2>Transfers every ${DAYN[a.day]}</h2>${c.lines.filter(l=>l.amt>0).length?c.lines.filter(l=>l.amt>0).map(tLine).join(''):'<div class="empty">No transfers yet.</div>'}${tResult(c)}</div>`;
+  h+=`<div class="card"><h2>Each account, per week</h2>${c.flows.map(fLine).join('')}</div>`;
   h+=`<div class="empty" style="text-align:left;padding:0 0 12px">Monthly and every-two-weeks pay is split into a weekly amount. The app only shows the amounts. It does not move any money.</div></div>`;
   return h;
 }
