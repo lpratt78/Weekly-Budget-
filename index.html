@@ -50,6 +50,7 @@ h1{font-size:15px;font-weight:600;color:var(--mut);margin:0 0 12px}
 .item.gt{font-size:19px;font-weight:800;width:auto;margin:6px -12px;padding:16px 12px;border-radius:12px;border-top:0}
 .gt-iv{background:var(--ln);background:color-mix(in srgb,var(--inc) 14%,transparent)}
 .gt-bv{background:var(--ln);background:color-mix(in srgb,var(--bill) 14%,transparent)}
+.item.hlx{background:color-mix(in srgb,var(--ext) 16%,transparent);border-radius:10px;padding-left:10px;padding-right:10px;margin:2px -10px;width:auto;border-top-color:transparent}
 .gt-ex{background:var(--ln);background:color-mix(in srgb,var(--ext) 14%,transparent)}
 .ex{color:var(--ext)}
 .card.ext{border-left:4px solid var(--ext)}
@@ -164,6 +165,7 @@ function hits(it,d){
   return d.getDate()===Math.min(a.getDate(),dim(d.getFullYear(),d.getMonth()));
 }
 const factor={weekly:1,biweekly:.5,monthly:12/52,once:0};
+const tieW=id=>sum(S.extras.filter(e=>e.bill===id).map(e=>e.amount*factor[e.rep]));
 const extW=()=>sum(S.extras.map(x=>x.amount*factor[x.rep]));
 const spendMoney=()=>Math.max(0,sum(S.income.map(x=>x.amount*factor[x.rep]))-sum(S.bills.map(x=>x.amount*factor[x.rep]))-extW());
 const savWk=s=>s.mode==='pct'?spendMoney()*s.pct/100:(s.per==='week'?s.amount:s.amount*12/52);
@@ -220,7 +222,7 @@ const catP=(w,t,n)=>t>0&&w>0?`${(w/t*100).toFixed(1)}% of ${n}`:'';
 const incWk=()=>sum(S.income.map(x=>x.amount*factor[x.rep]));
 const pctInc=w=>{const i=incWk();return i>0?(w/i*100).toFixed(1)+'% of income':'no income yet'};
 function tabTotal(kind){
-  const w=kind==='savings'?sum(S.savings.map(savWk)):sum(S[kind].map(x=>x.amount*factor[x.rep]));
+  const w=kind==='savings'?sum(S.savings.map(savWk)):sum(S[kind].map(x=>x.amount*factor[x.rep]))+(kind==='bills'?sum(S.bills.map(b=>b.rep==='once'?0:tieW(b.id))):0);
   const c=({savings:'sv',bills:'bv',income:'iv',extras:'ex'})[kind];
   return `<div class="item gt gt-${c}" style="cursor:default"><span>Total</span><span class="amt ${c}">${fmt(w)}<ul class="dr"><li>Monthly = ${fmt(w*52/12)}</li><li>${fmt(w*52)}</li>${kind!=='income'?`<li>${pctInc(w)}</li>`:''}</ul></span></div>`;
 }
@@ -656,7 +658,7 @@ function stubView(){
   const prev=stubFile?`<div style="margin-top:10px">${stubFile.img?`<img src="${stubFile.img}" alt="Your paystub" style="width:100%;max-height:280px;object-fit:contain;border-radius:8px;background:var(--bg)">`:''}<div class="row" style="padding:6px 0 0;border:0"><span>${esc(stubFile.name)}</span><button onclick="stubClear()" style="background:none;border:0;color:var(--spd);text-decoration:underline;font:inherit">Remove</button></div></div>`:'';
   const incName=(S.income.find(x=>x.id===curStub)||{name:'Income'}).name;
   return `<div class="ls"><h1>${esc(incName)} Paystub</h1>
-  <div class="card" style="padding:12px 16px"><button class="add" style="margin:0" onclick="document.getElementById('sf').click()">Upload paystub</button>${prev}<div id="stubStat">${statHtml()}</div><div class="empty" style="padding:8px 0 0">Your paystub is read on your phone and never uploaded or saved. The amounts below are filled in for you, and you can edit any of them.</div><details style="margin-top:6px"><summary style="font-size:13px;color:var(--spd);cursor:pointer">Having trouble? Paste the text instead</summary><textarea id="stp" rows="5" placeholder="Copy the text from your paystub and paste it here" style="width:100%;margin-top:8px;font:12px monospace;padding:10px;border:1px solid var(--ln);border-radius:10px;background:var(--bg);color:var(--ink)"></textarea><button class="add" style="margin:8px 0 0;font-size:14px;padding:10px" onclick="stubPaste()">Fill in from this text</button></details><div style="font-size:11px;color:var(--mut);margin-top:8px">Paystub reader v44</div></div>
+  <div class="card" style="padding:12px 16px"><button class="add" style="margin:0" onclick="document.getElementById('sf').click()">Upload paystub</button>${prev}<div id="stubStat">${statHtml()}</div><div class="empty" style="padding:8px 0 0">Your paystub is read on your phone and never uploaded or saved. The amounts below are filled in for you, and you can edit any of them.</div><details style="margin-top:6px"><summary style="font-size:13px;color:var(--spd);cursor:pointer">Having trouble? Paste the text instead</summary><textarea id="stp" rows="5" placeholder="Copy the text from your paystub and paste it here" style="width:100%;margin-top:8px;font:12px monospace;padding:10px;border:1px solid var(--ln);border-radius:10px;background:var(--bg);color:var(--ink)"></textarea><button class="add" style="margin:8px 0 0;font-size:14px;padding:10px" onclick="stubPaste()">Fill in from this text</button></details><div style="font-size:11px;color:var(--mut);margin-top:8px">Paystub reader v45</div></div>
 <div class="card inc gt-iv" id="stubNet" style="padding:8px 16px">${stubNet()}</div>
   <div id="stubPie">${stubPaycheck()}</div>
   <h1>Weekly and yearly breakdown</h1><div id="stubOut">${stubOut()}</div>
@@ -783,12 +785,14 @@ async function exportXlsx(){
 }
 function listView(kind,title,addLabel,empty){
   const l=S[kind];
-  const T=kind==='savings'?sum(l.map(savWk)):sum(l.map(x=>x.amount*factor[x.rep]));
+  const bx=it=>kind==='bills'&&it.rep!=='once'?tieW(it.id)/factor[it.rep]:0;
+  const T=kind==='savings'?sum(l.map(savWk)):sum(l.map(x=>(x.amount+bx(x))*factor[x.rep]));
   const items=sortAsc(l).map(it=>{
-    const L=[];
+    const L=[],ex=bx(it);
     if(kind==='savings'){L.push(it.mode==='pct'?`${it.pct}% of spending money`:`${fmt(it.amount)} per ${it.per}`,pctInc(savWk(it)))}
     else{
       L.push(repText(it));
+      if(ex>0)L.push(`<b style="color:var(--ext)">Includes ${fmt(ex)} extra</b>`);
       if(kind==='income'&&it.stub)L.push(`<a href="#" style="color:var(--spd)" onclick="event.stopPropagation();tab='stub:${it.id}';render();scrollTo(0,0);return false">Open ${esc(it.name)} Paystub</a>`);
       if(kind==='bills'){
         if(it.remind>=0)L.push('Reminder: '+remText(it.remind));
@@ -797,8 +801,8 @@ function listView(kind,title,addLabel,empty){
         L.push(calHtml(it));
       }
     }
-    const w=kind==='savings'?savWk(it):it.rep==='once'?null:it.amount*factor[it.rep];
-    return `<div class="item" role="button" tabindex="0" style="cursor:pointer" onkeydown="if(event.key==='Enter')openForm('${kind}','${it.id}')" onclick="openForm('${kind}','${it.id}')"><span>${esc(it.name)}<ul class="dl">${L.map(x=>`<li>${x}</li>`).join('')}</ul></span><span class="amt ${({savings:'sv',bills:'bv',income:'iv'})[kind]}">${it.mode==='pct'?it.pct+'%':fmt(it.amount)}${w==null?'':`<small class="wy">W= ${fmt(w)}</small><small class="wy">Y= ${fmt(w*52)}</small>${catP(w,T,kind)?`<small class="wy pc">${catP(w,T,kind)}</small>`:''}`}</span></div>`}).join('');
+    const w=kind==='savings'?savWk(it):it.rep==='once'?null:(it.amount+ex)*factor[it.rep];
+    return `<div class="item${ex>0?' hlx':''}" role="button" tabindex="0" style="cursor:pointer" onkeydown="if(event.key==='Enter')openForm('${kind}','${it.id}')" onclick="openForm('${kind}','${it.id}')"><span>${esc(it.name)}<ul class="dl">${L.map(x=>`<li>${x}</li>`).join('')}</ul></span><span class="amt ${({savings:'sv',bills:'bv',income:'iv'})[kind]}">${it.mode==='pct'?it.pct+'%':fmt(it.amount+ex)}${w==null?'':`<small class="wy">W= ${fmt(w)}</small><small class="wy">Y= ${fmt(w*52)}</small>${catP(w,T,kind)?`<small class="wy pc">${catP(w,T,kind)}</small>`:''}`}</span></div>`}).join('');
   return `<div class="ls"><h1>${title}</h1><button style="margin:0 0 12px" class="add ${({savings:'gadd',bills:'badd',income:'iadd'})[kind]}" onclick="openForm('${kind}')">${addLabel}</button>${kind==='savings'?goalToggle():''}${kind==='bills'?notifyLine():''}<div class="card ${({savings:'green',bills:'bill',income:'inc'})[kind]}">${items?items+tabTotal(kind):`<div class="empty">${empty}</div>`}</div>${l.length?`<button class="add" style="margin:12px 0 0;background:var(--sf);color:var(--bill);border:1px solid var(--bill)" onclick="askClear('${kind}')">Delete all ${({bills:'bills',income:'income',savings:'savings'})[kind]}</button>`:''}</div>`;
 }
 
