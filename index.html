@@ -660,7 +660,7 @@ function stubView(){
   const prev=stubFile?`<div style="margin-top:10px">${stubFile.img?`<img src="${stubFile.img}" alt="Your paystub" style="width:100%;max-height:280px;object-fit:contain;border-radius:8px;background:var(--bg)">`:''}<div class="row" style="padding:6px 0 0;border:0"><span>${esc(stubFile.name)}</span><button onclick="stubClear()" style="background:none;border:0;color:var(--spd);text-decoration:underline;font:inherit">Remove</button></div></div>`:'';
   const incName=(S.income.find(x=>x.id===curStub)||{name:'Income'}).name;
   return `<div class="ls"><h1>${esc(incName)} Paystub</h1>
-  <div class="card" style="padding:12px 16px"><button class="add" style="margin:0" onclick="document.getElementById('sf').click()">Upload paystub</button>${prev}<div id="stubStat">${statHtml()}</div><div class="empty" style="padding:8px 0 0">Your paystub is read on your phone and never uploaded or saved. The amounts below are filled in for you, and you can edit any of them.</div><details style="margin-top:6px"><summary style="font-size:13px;color:var(--spd);cursor:pointer">Having trouble? Paste the text instead</summary><textarea id="stp" rows="5" placeholder="Copy the text from your paystub and paste it here" style="width:100%;margin-top:8px;font:12px monospace;padding:10px;border:1px solid var(--ln);border-radius:10px;background:var(--bg);color:var(--ink)"></textarea><button class="add" style="margin:8px 0 0;font-size:14px;padding:10px" onclick="stubPaste()">Fill in from this text</button></details><div style="font-size:11px;color:var(--mut);margin-top:8px">Paystub reader v47</div></div>
+  <div class="card" style="padding:12px 16px"><button class="add" style="margin:0" onclick="document.getElementById('sf').click()">Upload paystub</button>${prev}<div id="stubStat">${statHtml()}</div><div class="empty" style="padding:8px 0 0">Your paystub is read on your phone and never uploaded or saved. The amounts below are filled in for you, and you can edit any of them.</div><details style="margin-top:6px"><summary style="font-size:13px;color:var(--spd);cursor:pointer">Having trouble? Paste the text instead</summary><textarea id="stp" rows="5" placeholder="Copy the text from your paystub and paste it here" style="width:100%;margin-top:8px;font:12px monospace;padding:10px;border:1px solid var(--ln);border-radius:10px;background:var(--bg);color:var(--ink)"></textarea><button class="add" style="margin:8px 0 0;font-size:14px;padding:10px" onclick="stubPaste()">Fill in from this text</button></details><div style="font-size:11px;color:var(--mut);margin-top:8px">Paystub reader v48</div></div>
 <div class="card inc gt-iv" id="stubNet" style="padding:8px 16px">${stubNet()}</div>
   <div id="stubPie">${stubPaycheck()}</div>
   <h1>Weekly and yearly breakdown</h1><div id="stubOut">${stubOut()}</div>
@@ -770,8 +770,8 @@ async function exportXlsx(){
   const withTotal=(ws,n,cols)=>{if(!n)return;const r=n+2,last=ws['!ref'].match(/:([A-Z]+)/)[1];ws['A'+r]={t:'s',v:'Total'};cols.forEach(c=>{let t=0;for(let i=2;i<=n+1;i++)t+=ws[c+i].v;ws[c+r]={t:'n',f:`SUM(${c}2:${c}${n+1})`,v:Math.round(t*1e4)/1e4}});ws['!ref']='A1:'+last+r};
   const s3=X.utils.aoa_to_sheet([['Bill','Amount','Due date','Repeats','Weekly amount','Yearly amount','Reminder','Payment','Link'],...sortAsc(S.bills).map(b=>[b.name,b.amount,b.date,repL[b.rep],eq(b),r2(eq(b)*52),b.remind>=0?remText(b.remind):'None',payText(b)||'Not set',b.link||''])]);
   withTotal(s3,S.bills.length,['E','F']);money(s3,2,['B','E','F']);add('Bills',s3,[24,12,12,16,16,16,18,18,40]);
-  const s4=X.utils.aoa_to_sheet([['Income','Amount','Pay date','Repeats','Weekly amount','Yearly amount','Paystub'],...sortAsc(S.income).map(b=>[b.name,b.amount,b.date,repL[b.rep],eq(b),r2(eq(b)*52),b.stub?'Yes':'No'])]);
-  withTotal(s4,S.income.length,['E','F']);money(s4,2,['B','E','F']);add('Income',s4,[24,12,12,16,16,16,10]);
+  const s4=X.utils.aoa_to_sheet([['Income','Amount','Pay date','Repeats','Weekly amount','Yearly amount','Paystub','Deposited into'],...sortAsc(S.income).map(b=>[b.name,b.amount,b.date,repL[b.rep],eq(b),r2(eq(b)*52),b.stub?'Yes':'No',b.acct&&S.xcats.some(c=>c.id===b.acct)?xName(b.acct):''])]);
+  withTotal(s4,S.income.length,['E','F']);money(s4,2,['B','E','F']);add('Income',s4,[24,12,12,16,16,16,10,18]);
   const sE=X.utils.aoa_to_sheet([['Extra payment','Applied to bill','Amount','Repeats','Weekly amount','Monthly amount','Yearly amount'],...S.extras.map(b=>[b.name,b.bill&&S.bills.find(q=>q.id===b.bill)?S.bills.find(q=>q.id===b.bill).name:'',b.amount,repL[b.rep],eq(b),r2(eq(b)*52/12),r2(eq(b)*52)])]);
   withTotal(sE,S.extras.length,['E','F','G']);money(sE,2,['C','E','F','G']);add('Extra payments',sE,[24,22,12,16,16,16,16]);
   const sT=X.utils.aoa_to_sheet([['Transfer','From','To','Amount','Repeats','Weekly amount','Monthly amount','Yearly amount'],...S.xfers.map(t=>[t.name||xName(t.from)+' to '+xName(t.to),xName(t.from),xName(t.to),t.amount,t.per==='month'?'Every month':'Every week',r2(xWk(t)),r2(xWk(t)*52/12),r2(xWk(t)*52)])]);
@@ -796,6 +796,7 @@ function listView(kind,title,addLabel,empty){
     if(kind==='savings'){L.push(it.mode==='pct'?`${it.pct}% of spending money`:`${fmt(it.amount)} per ${it.per}`,pctInc(savWk(it)))}
     else{
       L.push(repText(it));
+      if(kind==='income'&&it.acct&&S.xcats.some(c=>c.id===it.acct))L.push('Deposited into '+esc(xName(it.acct)));
       if(ex>0)L.push(`<b style="color:var(--ext)">Includes ${fmt(ex)} extra</b>`);
       if(kind==='income'&&it.stub)L.push(`<a href="#" style="color:var(--spd)" onclick="event.stopPropagation();tab='stub:${it.id}';render();scrollTo(0,0);return false">Open ${esc(it.name)} Paystub</a>`);
       if(kind==='bills'){
@@ -813,14 +814,15 @@ function listView(kind,title,addLabel,empty){
 const xName=id=>{const c=S.xcats.find(q=>q.id===id);return c?c.name:'?'};
 const xWk=t=>t.per==='month'?t.amount*12/52:t.amount;
 function xferCard(){
-  if(!S.xfers.length)return '';
+  const inw={};S.xcats.forEach(c=>inw[c.id]=0);S.income.forEach(i=>{if(i.acct in inw)inw[i.acct]+=i.amount*factor[i.rep]});
+  if(!S.xfers.length&&!Object.values(inw).some(v=>v>0))return '';
   const net={};S.xcats.forEach(c=>net[c.id]=0);
   S.xfers.forEach(t=>{const w=xWk(t);if(t.from in net)net[t.from]-=w;if(t.to in net)net[t.to]+=w});
   const rows=S.xfers.map(t=>{const w=xWk(t);return `<div class="item" style="cursor:pointer;padding:9px 0"><span>${esc(t.name||xName(t.from)+' to '+xName(t.to))}<small class="wy" style="text-align:left">${t.name?esc(xName(t.from))+' to '+esc(xName(t.to))+' · ':''}${t.per==='month'?'Monthly':'Weekly'}</small></span><span class="amt">${fmt(w)}<small class="wy">Monthly = ${fmt(w*52/12)}</small></span></div>`}).join('');
   const tw=sum(S.xfers.map(xWk));
   const fr=new Date();fr.setDate(fr.getDate()+((5-fr.getDay()+7)%7));const frL=fr.toLocaleDateString(undefined,{weekday:'long',month:'short',day:'numeric'});
-  const nets=S.xcats.map(c=>{const b=parseFloat(c.bal)||0,n=net[c.id],t=b+n;return `<div class="row" style="padding:7px 0"><span>${esc(c.name)}<small class="wy" style="display:block;text-align:left;font-weight:400">${fmt(b)} ${n<0?'-':'+'} ${fmt(Math.abs(n))} in transfers</small></span><b style="color:${t<-0.004?'var(--bill)':'var(--ink)'}">${fmt(t)}</b></div>`}).join('');
-  return `<div class="card" ${goTab('xfer')} style="padding:6px 16px;cursor:pointer"><h2 style="margin:8px 0 0">Transfers · per week</h2>${rows}<div class="item gt" style="cursor:default;margin:6px -12px;padding:12px;background:var(--ln)"><span>Total moved</span><span class="amt">${fmt(tw)}<ul class="dr"><li>Monthly = ${fmt(tw*52/12)}</li></ul></span></div>${nets?`<h2 style="margin:10px 0 0;font-size:12px">In each account after transfers · ${frL}</h2>${nets}`:''}</div>`;
+  const nets=S.xcats.map(c=>{const b=parseFloat(c.bal)||0,n=net[c.id],iw=inw[c.id],t=b+iw+n;return `<div class="row" style="padding:7px 0"><span>${esc(c.name)}<small class="wy" style="display:block;text-align:left;font-weight:400">${fmt(b)}${iw>0?' + '+fmt(iw)+' income':''}${S.xfers.length?(n<0?' - ':' + ')+fmt(Math.abs(n))+' transfers':''}</small></span><b style="color:${t<-0.004?'var(--bill)':'var(--ink)'}">${fmt(t)}</b></div>`}).join('');
+  return `<div class="card" ${goTab('xfer')} style="padding:6px 16px;cursor:pointer"><h2 style="margin:8px 0 0">Transfers · per week</h2>${rows}${S.xfers.length?`<div class="item gt" style="cursor:default;margin:6px -12px;padding:12px;background:var(--ln)"><span>Total moved</span><span class="amt">${fmt(tw)}<ul class="dr"><li>Monthly = ${fmt(tw*52/12)}</li></ul></span></div>`:''}${nets?`<h2 style="margin:10px 0 0;font-size:12px">In each account after transfers · ${frL}</h2>${nets}`:''}</div>`;
 }
 function xferView(){
   const items=S.xfers.map(t=>{const w=xWk(t);return `<div class="item" role="button" tabindex="0" style="cursor:pointer" onkeydown="if(event.key==='Enter')xfForm('${t.id}')" onclick="xfForm('${t.id}')"><span>${esc(t.name||xName(t.from)+' to '+xName(t.to))}<ul class="dl">${t.name?`<li>${esc(xName(t.from))} to ${esc(xName(t.to))}</li>`:''}<li>${t.per==='month'?'Every month':'Every week'}</li></ul></span><span class="amt">${fmt(t.amount)}<small class="wy">W= ${fmt(w)}</small><small class="wy">Monthly = ${fmt(w*52/12)}</small></span></div>`}).join('');
@@ -854,7 +856,7 @@ function xcSave(id){
   if(id){const c=S.xcats.find(x=>x.id===id);c.name=n;c.bal=bal}else S.xcats.push({id:'c'+Date.now().toString(36),name:n,bal});
   save();closeForm();render();
 }
-function xcDel(id){S.xcats=S.xcats.filter(x=>x.id!==id);S.xfers=S.xfers.filter(t=>t.from!==id&&t.to!==id);save();closeForm();render()}
+function xcDel(id){S.income.forEach(i=>{if(i.acct===id)i.acct=''});S.xcats=S.xcats.filter(x=>x.id!==id);S.xfers=S.xfers.filter(t=>t.from!==id&&t.to!==id);save();closeForm();render()}
 function extraView(){
   const T=extW(),items=sortAsc(S.extras).map(it=>{const b=S.bills.find(q=>q.id===it.bill),w=it.amount*factor[it.rep];
     const L=[b?'Toward '+esc(b.name):'Not tied to a bill',({weekly:'Every week',biweekly:'Every 2 weeks',monthly:'Every month'})[it.rep]];
@@ -899,7 +901,7 @@ function openForm(kind,id){
   <div id="amt_g"><label for="f_a">Amount ($)</label><input id="f_a" type="number" inputmode="decimal" step="0.01" min="0" value="${v.amount}"></div>
   ${sv?`${swHtml(v)}<div id="per_g"><label for="f_p">Save this amount each</label><select id="f_p"><option value="week"${v.per==='week'?' selected':''}>Week</option><option value="month"${v.per==='month'?' selected':''}>Month</option></select></div><div id="pct_g"><label for="f_pc">Percent of spending money (%)</label><input id="f_pc" type="number" inputmode="decimal" step="0.1" min="0" max="100" value="${v.pct??''}" placeholder="e.g. 10"><div style="color:var(--mut);font-size:13px;margin-top:6px">Spending money is your income minus bills. This percent of it goes to savings each week.</div></div>`
   :`<label for="f_d">${kind==='bills'?'Due date':'Pay date'}</label><input id="f_d" type="date" value="${v.date}">
-  <label for="f_r">Repeats</label><select id="f_r">${[['monthly','Every month'],['biweekly','Every 2 weeks'],['weekly','Every week'],['once','Once']].map(([k,t])=>`<option value="${k}"${v.rep===k?' selected':''}>${t}</option>`).join('')}</select>${kind==='income'?psSel(v):''}${kind==='bills'?`<label for="f_m">Remind me</label><select id="f_m">${[[-1,'No reminder'],[0,'On the due date'],[1,'1 day before'],[2,'2 days before'],[3,'3 days before'],[7,'1 week before']].map(([k,t])=>`<option value="${k}"${(v.remind??-1)===k?' selected':''}>${t}</option>`).join('')}</select>${payFields(v)}`:''}`}
+  <label for="f_r">Repeats</label><select id="f_r">${[['monthly','Every month'],['biweekly','Every 2 weeks'],['weekly','Every week'],['once','Once']].map(([k,t])=>`<option value="${k}"${v.rep===k?' selected':''}>${t}</option>`).join('')}</select>${kind==='income'?psSel(v)+`<label for="f_ac">Deposited into account</label><select id="f_ac"><option value="">Not tied to an account</option>${S.xcats.map(c=>`<option value="${esc(c.id)}"${v.acct===c.id?' selected':''}>${esc(c.name)}</option>`).join('')}</select>`:''}${kind==='bills'?`<label for="f_m">Remind me</label><select id="f_m">${[[-1,'No reminder'],[0,'On the due date'],[1,'1 day before'],[2,'2 days before'],[3,'3 days before'],[7,'1 week before']].map(([k,t])=>`<option value="${k}"${(v.remind??-1)===k?' selected':''}>${t}</option>`).join('')}</select>${payFields(v)}`:''}`}
   <div class="btns">${it?`<button class="del" onclick="del('${kind}','${id}')">Delete</button>`:`<button onclick="closeForm()">Cancel</button>`}<button class="pri" onclick="saveForm('${kind}','${id||''}')">Save ${one}</button></div>`;
   $('ov').classList.add('show');if(kind==='bills')payUI();if(kind==='savings')savUI();
   setTimeout(()=>$('f_n').focus(),50);
@@ -923,7 +925,7 @@ function cleanBackup(d){
   const dated=(x,i,k)=>Object.assign(base(x,i,k),{date:/^\d{4}-\d{2}-\d{2}$/.test(x.date)?x.date:iso(new Date()),rep:reps.includes(x.rep)?x.rep:'monthly'});
   return{
     bills:arr(d.bills).map((x,i)=>Object.assign(dated(x,i,'b'),{remind:[-1,0,1,2,3,7].includes(Number(x.remind))?Number(x.remind):-1,pay:(x.pay==='auto'||x.pay==='manual')?x.pay:undefined,payBy:['mail','website','other'].includes(x.payBy)?x.payBy:'',payNote:str(x.payNote,80),link:cleanLink(str(x.link,500))})),
-    income:arr(d.income).map((x,i)=>Object.assign(dated(x,i,'i'),{stub:!!x.stub})),
+    income:arr(d.income).map((x,i)=>Object.assign(dated(x,i,'i'),{stub:!!x.stub,acct:str(x.acct,40).replace(/[^\w-]/g,'')})),
     extras:arr(d.extras).map((x,i)=>Object.assign(base(x,i,'e'),{bill:str(x.bill,40).replace(/[^\w-]/g,''),rep:['weekly','biweekly','monthly'].includes(x.rep)?x.rep:'monthly'})),
     xcats:(()=>{const c=arr(d.xcats).slice(0,30).map((x,i)=>({id:str(x.id,40).replace(/[^\w-]/g,'')||'c'+i,name:str(x.name,40)||'Category',bal:isFinite(parseFloat(x.bal))?String(parseFloat(x.bal)):''}));return c.length?c:undefined})(),
     xfers:arr(d.xfers).map((x,i)=>({id:str(x.id,40).replace(/[^\w-]/g,'')||'t'+i,name:str(x.name,60),amount:Math.max(0,Number(x.amount)||0),from:str(x.from,40).replace(/[^\w-]/g,''),to:str(x.to,40).replace(/[^\w-]/g,''),per:x.per==='month'?'month':'week'})),
@@ -1038,6 +1040,7 @@ function readExcel(inp){
       const wb=XLSX.read(r.result,{type:'array',cellDates:true}),d=excelData(wb);
       if(!d){msg('Could not restore','This file does not look like a Weekly Budget export. It needs the Bills, Income or Savings sheets.');return}
       pending=cleanBackup(d);pending.extras=undefined;pending.xfers=undefined;pending.xcats=undefined;pending.goal=S.goal||'';pending.stubs={};pending.legacy=null;
+      pending.income.forEach(n=>{const q=S.income.find(o=>o.acct&&o.name.trim().toLowerCase()===n.name.trim().toLowerCase());if(q)n.acct=q.acct});
       pending.income.forEach(n=>{const m=S.income.find(o=>o.stub&&S.stubs[o.id]&&o.name.trim().toLowerCase()===n.name.trim().toLowerCase());if(m){n.stub=true;pending.stubs[n.id]=S.stubs[m.id]}});
       msg('Restore from Excel?',`This file has ${pending.bills.length} bills, ${pending.income.length} income and ${pending.savings.length} savings entries. It replaces those on this device. Your savings goal stays as it is, and paystub screens carry over for income with the same name.`,[['Cancel',''],['Restore','applyRestore()']]);
     }catch(e){msg('Could not restore','The Excel file could not be read.')}
@@ -1160,7 +1163,7 @@ function saveForm(kind,id){
   const amount=pm?0:parseFloat($('f_a').value),pct=pm?parseFloat($('f_pc').value):0;
   const bad=!name||(pm?!(pct>=0&&pct<=100):!(amount>=0));
   if(bad){$('f_n').style.borderColor='var(--bill)';(pm?$('f_pc'):$('f_a')).style.borderColor='var(--bill)';return}
-  const rec=kind==='savings'?(pm?{name,mode:'pct',pct,amount:0,per:'week'}:{name,mode:'amt',amount,per:$('f_p').value}):{name,amount,date:$('f_d').value||iso(new Date()),rep:$('f_r').value,...(kind==='bills'?{remind:parseInt($('f_m').value),...payRec()}:{}),...(kind==='income'?{stub:$('f_ps').value==='1'}:{})};
+  const rec=kind==='savings'?(pm?{name,mode:'pct',pct,amount:0,per:'week'}:{name,mode:'amt',amount,per:$('f_p').value}):{name,amount,date:$('f_d').value||iso(new Date()),rep:$('f_r').value,...(kind==='bills'?{remind:parseInt($('f_m').value),...payRec()}:{}),...(kind==='income'?{stub:$('f_ps').value==='1',acct:$('f_ac').value}:{})};
   let rid=id;
   if(id){Object.assign(S[kind].find(x=>x.id===id),rec)}else{rid=Date.now().toString(36);S[kind].push(Object.assign({id:rid},rec))}
   if(kind==='income'&&rec.stub)ensureStub(rid);
