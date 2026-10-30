@@ -660,7 +660,7 @@ function stubView(){
   const prev=stubFile?`<div style="margin-top:10px">${stubFile.img?`<img src="${stubFile.img}" alt="Your paystub" style="width:100%;max-height:280px;object-fit:contain;border-radius:8px;background:var(--bg)">`:''}<div class="row" style="padding:6px 0 0;border:0"><span>${esc(stubFile.name)}</span><button onclick="stubClear()" style="background:none;border:0;color:var(--spd);text-decoration:underline;font:inherit">Remove</button></div></div>`:'';
   const incName=(S.income.find(x=>x.id===curStub)||{name:'Income'}).name;
   return `<div class="ls"><h1>${esc(incName)} Paystub</h1>
-  <div class="card" style="padding:12px 16px"><button class="add" style="margin:0" onclick="document.getElementById('sf').click()">Upload paystub</button>${prev}<div id="stubStat">${statHtml()}</div><div class="empty" style="padding:8px 0 0">Your paystub is read on your phone and never uploaded or saved. The amounts below are filled in for you, and you can edit any of them.</div><details style="margin-top:6px"><summary style="font-size:13px;color:var(--spd);cursor:pointer">Having trouble? Paste the text instead</summary><textarea id="stp" rows="5" placeholder="Copy the text from your paystub and paste it here" style="width:100%;margin-top:8px;font:12px monospace;padding:10px;border:1px solid var(--ln);border-radius:10px;background:var(--bg);color:var(--ink)"></textarea><button class="add" style="margin:8px 0 0;font-size:14px;padding:10px" onclick="stubPaste()">Fill in from this text</button></details><div style="font-size:11px;color:var(--mut);margin-top:8px">Paystub reader v51</div></div>
+  <div class="card" style="padding:12px 16px"><button class="add" style="margin:0" onclick="document.getElementById('sf').click()">Upload paystub</button>${prev}<div id="stubStat">${statHtml()}</div><div class="empty" style="padding:8px 0 0">Your paystub is read on your phone and never uploaded or saved. The amounts below are filled in for you, and you can edit any of them.</div><details style="margin-top:6px"><summary style="font-size:13px;color:var(--spd);cursor:pointer">Having trouble? Paste the text instead</summary><textarea id="stp" rows="5" placeholder="Copy the text from your paystub and paste it here" style="width:100%;margin-top:8px;font:12px monospace;padding:10px;border:1px solid var(--ln);border-radius:10px;background:var(--bg);color:var(--ink)"></textarea><button class="add" style="margin:8px 0 0;font-size:14px;padding:10px" onclick="stubPaste()">Fill in from this text</button></details><div style="font-size:11px;color:var(--mut);margin-top:8px">Paystub reader v52</div></div>
 <div class="card inc gt-iv" id="stubNet" style="padding:8px 16px">${stubNet()}</div>
   <div id="stubPie">${stubPaycheck()}</div>
   <h1>Weekly and yearly breakdown</h1><div id="stubOut">${stubOut()}</div>
@@ -813,21 +813,42 @@ function listView(kind,title,addLabel,empty){
 
 const xName=id=>{const c=S.xcats.find(q=>q.id===id);return c?c.name:'?'};
 const xWk=t=>t.per==='month'?t.amount*12/52:t.amount;
+function xFlow(){
+  const inw={},net={};S.xcats.forEach(c=>{inw[c.id]=0;net[c.id]=0});
+  S.income.forEach(i=>{if(i.acct in inw)inw[i.acct]+=i.amount*factor[i.rep]});
+  S.xfers.forEach(t=>{const w=xWk(t);if(t.from in net)net[t.from]-=w;if(t.to in net)net[t.to]+=w});
+  const wk={};S.xcats.forEach(c=>wk[c.id]=inw[c.id]+net[c.id]);
+  return{inw,net,wk};
+}
+function lastFri(){const d=new Date();d.setHours(12,0,0,0);let b=(d.getDay()-5+7)%7;if(b===0)b=7;d.setDate(d.getDate()-b);return d}
+function rollBal(){
+  const lf=lastFri(),key=iso(lf),f=xFlow();let ch=false;
+  S.xcats.forEach(c=>{
+    if(c.bal===undefined||c.bal==='')return;
+    if(!c.rolled){c.rolled=key;ch=true;return}
+    const r=new Date(c.rolled+'T12:00:00'),n=Math.round((lf-r)/(7*864e5));
+    if(n>0){c.bal=String(Math.round((parseFloat(c.bal||0)+n*f.wk[c.id])*100)/100);c.rolled=key;ch=true}
+  });
+  if(ch)save();
+}
+const xGrand=c=>(parseFloat(c.bal)||0)+xFlow().wk[c.id];
 function xferCard(){
-  const inw={};S.xcats.forEach(c=>inw[c.id]=0);S.income.forEach(i=>{if(i.acct in inw)inw[i.acct]+=i.amount*factor[i.rep]});
+  rollBal();
+  const {inw}=xFlow();
   if(!S.xfers.length&&!Object.values(inw).some(v=>v>0))return '';
   const net={};S.xcats.forEach(c=>net[c.id]=0);
   S.xfers.forEach(t=>{const w=xWk(t);if(t.from in net)net[t.from]-=w;if(t.to in net)net[t.to]+=w});
   const rows=S.xfers.map(t=>{const w=xWk(t);return `<div class="item" style="cursor:pointer;padding:9px 0"><span>${esc(t.name||xName(t.from)+' to '+xName(t.to))}</span><span class="amt">${fmt(w)}<small class="wy">Monthly = ${fmt(w*52/12)}</small></span></div>`}).join('');
   const tw=sum(S.xfers.map(xWk));
   const fr=new Date();fr.setDate(fr.getDate()+((5-fr.getDay()+7)%7));const frL=fr.toLocaleDateString(undefined,{weekday:'long',month:'short',day:'numeric'});
-  const nets=S.xcats.map(c=>{const b=parseFloat(c.bal)||0,w=net[c.id]+inw[c.id],g=b+w,sm='font-weight:400;display:block';return `<div class="row" style="padding:7px 0"><span>${esc(c.name)}</span><b style="text-align:right;color:${w<-0.004?'var(--bill)':'var(--ink)'}">${fmt(w)}<small class="wy" style="${sm}">Monthly = ${fmt(w*52/12)}</small>${b?`<small class="wy" style="${sm};color:${g<-0.004?'var(--bill)':'var(--ink)'}">Grand total = ${fmt(g)}</small>`:''}</b></div>`}).join('');
+  const nets=S.xcats.map(c=>{const b=c.bal!==undefined&&c.bal!=='',w=net[c.id]+inw[c.id],g=(parseFloat(c.bal)||0)+w,sm='font-weight:400;display:block';return `<div class="row" style="padding:7px 0"><span>${esc(c.name)}</span><b style="text-align:right;color:${w<-0.004?'var(--bill)':'var(--ink)'}">${fmt(w)}<small class="wy" style="${sm}">Monthly = ${fmt(w*52/12)}</small>${b?`<small class="wy" style="${sm};color:${g<-0.004?'var(--bill)':'var(--ink)'}">Grand total = ${fmt(g)}</small>`:''}</b></div>`}).join('');
   const tint='background:color-mix(in srgb,var(--spd) 13%,transparent);border-radius:12px;padding:4px 12px;margin:8px 0';
   return `<div class="card" ${goTab('xfer')} style="padding:6px 16px;cursor:pointer;border-left:4px solid var(--spd)"><h2 style="margin:8px 0 0;color:var(--spd)">Transfers · per week</h2><div style="${tint}">${rows}</div>${nets?`<h2 style="margin:10px 0 0;font-size:12px;color:var(--spd)">In each account after transfers · ${frL}</h2><div style="${tint}">${nets}</div>`:''}</div>`;
 }
 function xferView(){
+  rollBal();
   const items=S.xfers.map(t=>{const w=xWk(t);return `<div class="item" role="button" tabindex="0" style="cursor:pointer" onkeydown="if(event.key==='Enter')xfForm('${t.id}')" onclick="xfForm('${t.id}')"><span>${esc(t.name||xName(t.from)+' to '+xName(t.to))}<ul class="dl">${t.name?`<li>${esc(xName(t.from))} to ${esc(xName(t.to))}</li>`:''}<li>${t.per==='month'?'Every month':'Every week'}</li></ul></span><span class="amt">${fmt(t.amount)}<small class="wy">W= ${fmt(w)}</small><small class="wy">Monthly = ${fmt(w*52/12)}</small></span></div>`}).join('');
-  const cats=S.xcats.map(c=>`<div class="item" role="button" tabindex="0" style="cursor:pointer;padding:10px 0" onkeydown="if(event.key==='Enter')xcForm('${c.id}')" onclick="xcForm('${c.id}')"><span>${esc(c.name)}</span><span class="amt" style="font-weight:400;font-size:14px">${parseFloat(c.bal)?fmt(parseFloat(c.bal)):'<span style="color:var(--mut)">Add balance</span>'}</span></div>`).join('');
+  const cats=S.xcats.map(c=>`<div class="item" role="button" tabindex="0" style="cursor:pointer;padding:10px 0" onkeydown="if(event.key==='Enter')xcForm('${c.id}')" onclick="xcForm('${c.id}')"><span>${esc(c.name)}</span><span class="amt" style="font-weight:400;font-size:14px">${c.bal!==undefined&&c.bal!==''?fmt(xGrand(c)):'<span style="color:var(--mut)">Add grand total</span>'}</span></div>`).join('');
   return `<div class="ls"><h1>Transfers</h1><button style="margin:0 0 12px" class="add" onclick="xfForm()">Add a transfer</button><div class="card">${items||'<div class="empty">No transfers yet. Add one to move money between categories each week or month.</div>'}${S.xfers.length?`<div class="item gt" style="cursor:default;margin:6px -12px;padding:14px 12px;background:var(--ln)"><span>Total</span><span class="amt">${fmt(sum(S.xfers.map(xWk)))}<ul class="dr"><li>W= per week</li><li>Monthly = ${fmt(sum(S.xfers.map(xWk))*52/12)}</li></ul></span></div>`:''}</div><div class="card"><h2>Categories</h2>${cats||'<div class="empty">No categories.</div>'}<button class="add" style="margin:10px 0 4px;background:var(--sf);color:var(--ink);border:1px solid var(--ln)" onclick="xcForm()">Add a category</button></div></div>`;
 }
 function xfForm(id){
@@ -847,14 +868,16 @@ function xfSave(id){
 }
 function xfDel(id){S.xfers=S.xfers.filter(x=>x.id!==id);save();closeForm();render()}
 function xcForm(id){
+  rollBal();
   const c=id?S.xcats.find(x=>x.id===id):null,used=c?S.xfers.filter(t=>t.from===id||t.to===id).length:0;
-  $('sheet').innerHTML=`<h3>${c?'Edit':'Add'} category</h3><label for="c_n">Category name</label><input id="c_n" value="${c?esc(c.name):''}" placeholder="Checking, Vacation fund..."><label for="c_b">Balance before this Friday's transfers ($)</label><input id="c_b" type="number" inputmode="decimal" step="0.01" value="${c&&c.bal!==undefined?esc(c.bal):''}" placeholder="0.00"><div class="btns">${c?`<button class="del" onclick="xcDel('${id}')">Delete</button>`:`<button onclick="closeForm()">Cancel</button>`}<button class="pri" onclick="xcSave('${id||''}')">Save</button></div>${c&&used?`<div style="color:var(--mut);font-size:13px;margin-top:8px">Deleting this also removes the ${used} transfer${used>1?'s':''} that use it.</div>`:''}`;
+  $('sheet').innerHTML=`<h3>${c?'Edit':'Add'} category</h3><label for="c_n">Category name</label><input id="c_n" value="${c?esc(c.name):''}" placeholder="Checking, Vacation fund..."><label for="c_b">Grand total after this Friday's transfers ($)</label><input id="c_b" type="number" inputmode="decimal" step="0.01" value="${c&&c.bal!==undefined&&c.bal!==''?(Math.round(xGrand(c)*100)/100):''}" placeholder="Leave blank to not track"><div style="color:var(--mut);font-size:13px;margin-top:6px">Enter what the account will hold after this Friday. The app adds each week's total to it every Friday after that.</div><div class="btns">${c?`<button class="del" onclick="xcDel('${id}')">Delete</button>`:`<button onclick="closeForm()">Cancel</button>`}<button class="pri" onclick="xcSave('${id||''}')">Save</button></div>${c&&used?`<div style="color:var(--mut);font-size:13px;margin-top:8px">Deleting this also removes the ${used} transfer${used>1?'s':''} that use it.</div>`:''}`;
   $('ov').classList.add('show');setTimeout(()=>$('c_n').focus(),50);
 }
 function xcSave(id){
   const n=$('c_n').value.trim().slice(0,40);if(!n){$('c_n').style.borderColor='var(--bill)';return}
-  const bv=parseFloat($('c_b').value),bal=isFinite(bv)?String(bv):'';
-  if(id){const c=S.xcats.find(x=>x.id===id);c.name=n;c.bal=bal}else S.xcats.push({id:'c'+Date.now().toString(36),name:n,bal});
+  const bv=parseFloat($('c_b').value),has=isFinite(bv),key=iso(lastFri());
+  if(id){const c=S.xcats.find(x=>x.id===id);c.name=n;if(has){c.bal=String(Math.round((bv-xFlow().wk[id])*100)/100);c.rolled=key}else{c.bal='';delete c.rolled}}
+  else{const nid='c'+Date.now().toString(36);S.xcats.push({id:nid,name:n,bal:has?String(bv):'',rolled:has?key:undefined});if(has){const c=S.xcats[S.xcats.length-1];c.bal=String(bv);}}
   save();closeForm();render();
 }
 function xcDel(id){S.income.forEach(i=>{if(i.acct===id)i.acct=''});S.xcats=S.xcats.filter(x=>x.id!==id);S.xfers=S.xfers.filter(t=>t.from!==id&&t.to!==id);save();closeForm();render()}
@@ -928,7 +951,7 @@ function cleanBackup(d){
     bills:arr(d.bills).map((x,i)=>Object.assign(dated(x,i,'b'),{remind:[-1,0,1,2,3,7].includes(Number(x.remind))?Number(x.remind):-1,pay:(x.pay==='auto'||x.pay==='manual')?x.pay:undefined,payBy:['mail','website','other'].includes(x.payBy)?x.payBy:'',payNote:str(x.payNote,80),link:cleanLink(str(x.link,500))})),
     income:arr(d.income).map((x,i)=>Object.assign(dated(x,i,'i'),{stub:!!x.stub,acct:str(x.acct,40).replace(/[^\w-]/g,'')})),
     extras:arr(d.extras).map((x,i)=>Object.assign(base(x,i,'e'),{bill:str(x.bill,40).replace(/[^\w-]/g,''),rep:['weekly','biweekly','monthly'].includes(x.rep)?x.rep:'monthly'})),
-    xcats:(()=>{const c=arr(d.xcats).slice(0,30).map((x,i)=>({id:str(x.id,40).replace(/[^\w-]/g,'')||'c'+i,name:str(x.name,40)||'Category',bal:isFinite(parseFloat(x.bal))?String(parseFloat(x.bal)):''}));return c.length?c:undefined})(),
+    xcats:(()=>{const c=arr(d.xcats).slice(0,30).map((x,i)=>({id:str(x.id,40).replace(/[^\w-]/g,'')||'c'+i,name:str(x.name,40)||'Category',bal:isFinite(parseFloat(x.bal))?String(parseFloat(x.bal)):'',rolled:/^\d{4}-\d{2}-\d{2}$/.test(x.rolled)?x.rolled:undefined}));return c.length?c:undefined})(),
     xfers:arr(d.xfers).map((x,i)=>({id:str(x.id,40).replace(/[^\w-]/g,'')||'t'+i,name:str(x.name,60),amount:Math.max(0,Number(x.amount)||0),from:str(x.from,40).replace(/[^\w-]/g,''),to:str(x.to,40).replace(/[^\w-]/g,''),per:x.per==='month'?'month':'week'})),
     savings:arr(d.savings).map((x,i)=>Object.assign(base(x,i,'s'),{per:x.per==='week'?'week':'month'},x.mode==='pct'?{mode:'pct',pct:Math.min(100,Math.max(0,Number(x.pct)||0)),per:'week'}:{mode:'amt'}))
   };
