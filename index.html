@@ -167,7 +167,7 @@ function hits(it,d){
   return d.getDate()===Math.min(a.getDate(),dim(d.getFullYear(),d.getMonth()));
 }
 const factor={weekly:1,biweekly:.5,monthly:12/52,once:0};
-const extraOn=()=>!S.extraOff,xferOn=()=>!S.xferOff;
+const extraOn=()=>!S.extraOff,xferOn=()=>!S.xferOff,pbOn=()=>S.pbOn===undefined?S.income.some(x=>x.stub):!!S.pbOn;
 const tieW=id=>!extraOn()?0:sum(S.extras.filter(e=>e.bill===id).map(e=>e.amount*factor[e.rep]));
 const extW=()=>!extraOn()?0:sum(S.extras.map(x=>x.amount*factor[x.rep]));
 const spendMoney=()=>Math.max(0,sum(S.income.map(x=>x.amount*factor[x.rep]))-sum(S.bills.map(x=>x.amount*factor[x.rep]))-extW());
@@ -655,13 +655,18 @@ function stubOut(){
   <div class="card green"><h2>Take-home pay</h2>${wrow('Take-home',netW,'','gt gt-sv','#',(YV('gross')==null)?null:YV('gross')-sum(c.st.items.map(i=>YV(i.id)||0)))}${warn}
   ${wrow('Bills',toBills,'var(--bill)')}${toExt>0?wrow('Extra payments',toExt,'var(--ext)'):''}${wrow('Savings',savU,'var(--sav)')}${wrow('Spending',spend,'var(--spd)')}</div>`;
 }
+function pbPicker(){
+  return `<div class="card" style="padding:6px 16px 12px"><label for="pbi">Paycheck to break down</label><select id="pbi" onchange="pbPick(this.value)">${S.income.map(i=>`<option value="${esc(i.id)}"${i.id===curStub?' selected':''}>${esc(i.name)}</option>`).join('')}</select></div>`;
+}
+function pbPick(id){curStub=id;stubFile=null;stubStat=null;render();scrollTo(0,0)}
+function pbEmpty(){return `<div class="ls"><h1>Paycheck breakdown</h1><div class="card"><div class="empty">Add an income first. Then you can scan its paystub here and see where each paycheck goes.</div><button class="add" style="margin:10px 0 0" onclick="tab='income';render();scrollTo(0,0)">Go to Income</button></div></div>`}
 function stubView(){
   const st=stub();
   const inp=i=>`<div class="row" style="padding:6px 0"><span>${esc(i.name)}</span><span style="display:flex;flex-direction:column;align-items:flex-end;gap:3px"><span style="display:flex;align-items:center;gap:6px">$<input type="number" inputmode="decimal" step="0.01" min="0" value="${esc(i.amount)}" onchange="stubSet('${i.id}',this.value)" aria-label="${esc(i.name)}" style="width:96px;padding:7px 10px;font-size:15px;text-align:right;background:var(--bg)"><button onclick="stubDel('${i.id}')" aria-label="Remove ${esc(i.name)}" style="width:30px;height:30px;border:1px solid var(--ln);border-radius:8px;background:var(--sf);color:var(--mut);font-size:16px;padding:0">×</button></span></span></div>`;
   const prev=stubFile?`<div style="margin-top:10px">${stubFile.img?`<img src="${stubFile.img}" alt="Your paystub" style="width:100%;max-height:280px;object-fit:contain;border-radius:8px;background:var(--bg)">`:''}<div class="row" style="padding:6px 0 0;border:0"><span>${esc(stubFile.name)}</span><button onclick="stubClear()" style="background:none;border:0;color:var(--spd);text-decoration:underline;font:inherit">Remove</button></div></div>`:'';
   const incName=(S.income.find(x=>x.id===curStub)||{name:'Income'}).name;
-  return `<div class="ls"><h1>${esc(incName)} Paystub</h1>
-  <div class="card" style="padding:12px 16px"><button class="add" style="margin:0" onclick="document.getElementById('sf').click()">Upload paystub</button>${prev}<div id="stubStat">${statHtml()}</div><div class="empty" style="padding:8px 0 0">Your paystub is read on your phone and never uploaded or saved. The amounts below are filled in for you, and you can edit any of them.</div><details style="margin-top:6px"><summary style="font-size:13px;color:var(--spd);cursor:pointer">Having trouble? Paste the text instead</summary><textarea id="stp" rows="5" placeholder="Copy the text from your paystub and paste it here" style="width:100%;margin-top:8px;font:12px monospace;padding:10px;border:1px solid var(--ln);border-radius:10px;background:var(--bg);color:var(--ink)"></textarea><button class="add" style="margin:8px 0 0;font-size:14px;padding:10px" onclick="stubPaste()">Fill in from this text</button></details><div style="font-size:11px;color:var(--mut);margin-top:8px">Paystub reader v53</div></div>
+  return `<div class="ls"><h1>Paycheck breakdown</h1>${pbPicker()}
+  <div class="card" style="padding:12px 16px"><button class="add" style="margin:0" onclick="document.getElementById('sf').click()">Upload paystub</button>${prev}<div id="stubStat">${statHtml()}</div><div class="empty" style="padding:8px 0 0">Your paystub is read on your phone and never uploaded or saved. The amounts below are filled in for you, and you can edit any of them.</div><details style="margin-top:6px"><summary style="font-size:13px;color:var(--spd);cursor:pointer">Having trouble? Paste the text instead</summary><textarea id="stp" rows="5" placeholder="Copy the text from your paystub and paste it here" style="width:100%;margin-top:8px;font:12px monospace;padding:10px;border:1px solid var(--ln);border-radius:10px;background:var(--bg);color:var(--ink)"></textarea><button class="add" style="margin:8px 0 0;font-size:14px;padding:10px" onclick="stubPaste()">Fill in from this text</button></details><div style="font-size:11px;color:var(--mut);margin-top:8px">Paystub reader v54</div></div>
 <div class="card inc gt-iv" id="stubNet" style="padding:8px 16px">${stubNet()}</div>
   <div id="stubPie">${stubPaycheck()}</div>
   <h1>Weekly and yearly breakdown</h1><div id="stubOut">${stubOut()}</div>
@@ -799,7 +804,7 @@ function listView(kind,title,addLabel,empty){
       L.push(repText(it));
       if(kind==='income'&&xferOn()&&it.acct&&S.xcats.some(c=>c.id===it.acct))L.push('Deposited into '+esc(xName(it.acct)));
       if(ex>0)L.push(`<b style="color:var(--ext)">Includes ${fmt(ex)} extra</b>`);
-      if(kind==='income'&&it.stub)L.push(`<a href="#" style="color:var(--spd)" onclick="event.stopPropagation();tab='stub:${it.id}';render();scrollTo(0,0);return false">Open ${esc(it.name)} Paystub</a>`);
+      if(kind==='income'&&it.stub&&pbOn())L.push(`<a href="#" style="color:var(--spd)" onclick="event.stopPropagation();tab='paycheck';curStub='${it.id}';stubFile=null;stubStat=null;render();scrollTo(0,0);return false">Open ${esc(it.name)} in Paycheck breakdown</a>`);
       if(kind==='bills'){
         if(it.remind>=0)L.push('Reminder: '+remText(it.remind));
         const t=payText(it);if(t)L.push(esc(t));
@@ -884,9 +889,10 @@ function xcSave(id){
 }
 function xcDel(id){S.income.forEach(i=>{if(i.acct===id)i.acct=''});S.xcats=S.xcats.filter(x=>x.id!==id);S.xfers=S.xfers.filter(t=>t.from!==id&&t.to!==id);save();closeForm();render()}
 function setFlag(k,on){S[k]=!on;if(!on&&((k==='extraOff'&&tab==='extra')||(k==='xferOff'&&tab==='xfer')))tab='settings';save();render()}
+function setPb(on){S.pbOn=!!on;if(!on&&tab==='paycheck')tab='settings';save();render()}
 function settingsView(){
   const row=(t,d,k,on)=>`<div class="row" style="padding:12px 0;align-items:center"><span>${t}<small class="wy" style="display:block;text-align:left;font-size:12px;color:var(--mut)">${d}</small></span><label class="sw"><input type="checkbox" ${on?'checked':''} onchange="setFlag('${k}',this.checked)" aria-label="${t}"><span class="trk"></span></label></div>`;
-  return `<div class="ls"><h1>Settings</h1><div class="card"><h2>Screens</h2>${row('Extra payments','Adds the Extra screen. Turn off to hide it and leave extra payments out of every total.','extraOff',extraOn())}${row('Transfers','Adds the Transfers screen and card. Turn off to hide them and the income account choice.','xferOff',xferOn())}<div class="cap" style="margin-top:8px">Your entries are kept when a screen is off, so turning it back on brings them back.</div></div></div>`;
+  return `<div class="ls"><h1>Settings</h1><div class="card"><h2>Screens</h2>${row('Extra payments','Adds the Extra screen. Turn off to hide it and leave extra payments out of every total.','extraOff',extraOn())}${row('Transfers','Adds the Transfers screen and card. Turn off to hide them and the income account choice.','xferOff',xferOn())}<div class="row" style="padding:12px 0;align-items:center"><span>Paycheck breakdown<small class="wy" style="display:block;text-align:left;font-size:12px;color:var(--mut)">Adds a screen to scan a paystub and see where each paycheck goes.</small></span><label class="sw"><input type="checkbox" ${pbOn()?'checked':''} onchange="setPb(this.checked)" aria-label="Paycheck breakdown"><span class="trk"></span></label></div><div class="cap" style="margin-top:8px">Your entries are kept when a screen is off, so turning it back on brings them back.</div></div></div>`;
 }
 function extraView(){
   const T=extW(),items=sortAsc(S.extras).map(it=>{const b=S.bills.find(q=>q.id===it.bill),w=it.amount*factor[it.rep];
@@ -914,9 +920,15 @@ function extraSave(id){
 }
 function extraDel(id){S.extras=S.extras.filter(x=>x.id!==id);save();closeForm();render()}
 function render(){
-  if(tab.indexOf('stub:')===0){const id=tab.slice(5);if(S.income.some(x=>x.id===id&&x.stub)){if(curStub!==id){curStub=id;stubFile=null;stubStat=null}ensureStub(id);if(rollYtd(S.stubs[id]))save()}else tab='week'}
-  $('app').innerHTML=tab==='week'?weekView():tab==='bills'?listView('bills','Bills','Add a bill','No bills yet. Add rent, utilities, subscriptions.'):tab==='income'?listView('income','Income','Add income','No income yet. Add a paycheck with its pay date.'):tab==='goal'&&goalOn()?goalView():tab==='settings'?settingsView():tab==='extra'&&extraOn()?extraView():tab==='xfer'&&xferOn()?xferView():tab.indexOf('stub:')===0?stubView():listView('savings','Savings','Add a savings goal','No savings yet. Set an amount to set aside each week or month.');
-  const tl=[['week','Weekly'],['bills','Bills']].concat(extraOn()?[['extra','Extra']]:[]).concat([['income','Income'],['savings','Savings']]).concat(xferOn()?[['xfer','Transfers']]:[]).concat(goalOn()?[['goal','Goal']]:[]).concat(S.income.filter(x=>x.stub).map(x=>['stub:'+x.id,x.name+' Paystub'])).concat([['settings','Settings']]);
+  if(tab.indexOf('stub:')===0)tab='paycheck';
+  if(tab==='paycheck'){
+    if(!pbOn())tab='week';
+    else if(S.income.length){
+      if(!S.income.some(x=>x.id===curStub)){const f=S.income.find(x=>x.stub)||S.income[0];curStub=f.id;stubFile=null;stubStat=null}
+      const cur=S.income.find(x=>x.id===curStub);if(!cur.stub){cur.stub=true;save()}
+      ensureStub(curStub);if(rollYtd(S.stubs[curStub]))save()}}
+  $('app').innerHTML=tab==='week'?weekView():tab==='bills'?listView('bills','Bills','Add a bill','No bills yet. Add rent, utilities, subscriptions.'):tab==='income'?listView('income','Income','Add income','No income yet. Add a paycheck with its pay date.'):tab==='goal'&&goalOn()?goalView():tab==='settings'?settingsView():tab==='extra'&&extraOn()?extraView():tab==='xfer'&&xferOn()?xferView():tab==='paycheck'?(S.income.length?stubView():pbEmpty()):listView('savings','Savings','Add a savings goal','No savings yet. Set an amount to set aside each week or month.');
+  const tl=[['week','Weekly'],['bills','Bills']].concat(extraOn()?[['extra','Extra']]:[]).concat([['income','Income'],['savings','Savings']]).concat(xferOn()?[['xfer','Transfers']]:[]).concat(goalOn()?[['goal','Goal']]:[]).concat(pbOn()?[['paycheck','Paycheck breakdown']]:[]).concat([['settings','Settings']]);
   $('tabs').innerHTML=tl.map(([k,t])=>`<button class="${tab===k?'on':''}" onclick="tab='${k}';render();scrollTo(0,0)">${esc(t)}</button>`).join('');
   {const tb=$('tabs'),on=tb.querySelector('.on');if(on)tb.scrollLeft=Math.max(0,on.offsetLeft-(tb.clientWidth-on.offsetWidth)/2)}
 }
@@ -932,7 +944,7 @@ function openForm(kind,id){
   <div id="amt_g"><label for="f_a">Amount ($)</label><input id="f_a" type="number" inputmode="decimal" step="0.01" min="0" value="${v.amount}"></div>
   ${sv?`${swHtml(v)}<div id="per_g"><label for="f_p">Save this amount each</label><select id="f_p"><option value="week"${v.per==='week'?' selected':''}>Week</option><option value="month"${v.per==='month'?' selected':''}>Month</option></select></div><div id="pct_g"><label for="f_pc">Percent of spending money (%)</label><input id="f_pc" type="number" inputmode="decimal" step="0.1" min="0" max="100" value="${v.pct??''}" placeholder="e.g. 10"><div style="color:var(--mut);font-size:13px;margin-top:6px">Spending money is your income minus bills. This percent of it goes to savings each week.</div></div>`
   :`<label for="f_d">${kind==='bills'?'Due date':'Pay date'}</label><input id="f_d" type="date" value="${v.date}">
-  <label for="f_r">Repeats</label><select id="f_r">${[['monthly','Every month'],['biweekly','Every 2 weeks'],['weekly','Every week'],['once','Once']].map(([k,t])=>`<option value="${k}"${v.rep===k?' selected':''}>${t}</option>`).join('')}</select>${kind==='income'?psSel(v)+(!xferOn()?'':`<label for="f_ac">Deposited into account</label><select id="f_ac"><option value="">Not tied to an account</option>${S.xcats.map(c=>`<option value="${esc(c.id)}"${v.acct===c.id?' selected':''}>${esc(c.name)}</option>`).join('')}</select>`):''}${kind==='bills'?`<label for="f_m">Remind me</label><select id="f_m">${[[-1,'No reminder'],[0,'On the due date'],[1,'1 day before'],[2,'2 days before'],[3,'3 days before'],[7,'1 week before']].map(([k,t])=>`<option value="${k}"${(v.remind??-1)===k?' selected':''}>${t}</option>`).join('')}</select>${payFields(v)}`:''}`}
+  <label for="f_r">Repeats</label><select id="f_r">${[['monthly','Every month'],['biweekly','Every 2 weeks'],['weekly','Every week'],['once','Once']].map(([k,t])=>`<option value="${k}"${v.rep===k?' selected':''}>${t}</option>`).join('')}</select>${kind==='income'?(!xferOn()?'':`<label for="f_ac">Deposited into account</label><select id="f_ac"><option value="">Not tied to an account</option>${S.xcats.map(c=>`<option value="${esc(c.id)}"${v.acct===c.id?' selected':''}>${esc(c.name)}</option>`).join('')}</select>`):''}${kind==='bills'?`<label for="f_m">Remind me</label><select id="f_m">${[[-1,'No reminder'],[0,'On the due date'],[1,'1 day before'],[2,'2 days before'],[3,'3 days before'],[7,'1 week before']].map(([k,t])=>`<option value="${k}"${(v.remind??-1)===k?' selected':''}>${t}</option>`).join('')}</select>${payFields(v)}`:''}`}
   <div class="btns">${it?`<button class="del" onclick="del('${kind}','${id}')">Delete</button>`:`<button onclick="closeForm()">Cancel</button>`}<button class="pri" onclick="saveForm('${kind}','${id||''}')">Save ${one}</button></div>`;
   $('ov').classList.add('show');if(kind==='bills')payUI();if(kind==='savings')savUI();
   setTimeout(()=>$('f_n').focus(),50);
@@ -1194,7 +1206,7 @@ function saveForm(kind,id){
   const amount=pm?0:parseFloat($('f_a').value),pct=pm?parseFloat($('f_pc').value):0;
   const bad=!name||(pm?!(pct>=0&&pct<=100):!(amount>=0));
   if(bad){$('f_n').style.borderColor='var(--bill)';(pm?$('f_pc'):$('f_a')).style.borderColor='var(--bill)';return}
-  const rec=kind==='savings'?(pm?{name,mode:'pct',pct,amount:0,per:'week'}:{name,mode:'amt',amount,per:$('f_p').value}):{name,amount,date:$('f_d').value||iso(new Date()),rep:$('f_r').value,...(kind==='bills'?{remind:parseInt($('f_m').value),...payRec()}:{}),...(kind==='income'?{stub:$('f_ps').value==='1',acct:$('f_ac')?$('f_ac').value:(S.income.find(x=>x.id===id)||{}).acct||''}:{})};
+  const rec=kind==='savings'?(pm?{name,mode:'pct',pct,amount:0,per:'week'}:{name,mode:'amt',amount,per:$('f_p').value}):{name,amount,date:$('f_d').value||iso(new Date()),rep:$('f_r').value,...(kind==='bills'?{remind:parseInt($('f_m').value),...payRec()}:{}),...(kind==='income'?{stub:!!(S.income.find(x=>x.id===id)||{}).stub,acct:$('f_ac')?$('f_ac').value:(S.income.find(x=>x.id===id)||{}).acct||''}:{})};
   let rid=id;
   if(id){Object.assign(S[kind].find(x=>x.id===id),rec)}else{rid=Date.now().toString(36);S[kind].push(Object.assign({id:rid},rec))}
   if(kind==='income'&&rec.stub)ensureStub(rid);
